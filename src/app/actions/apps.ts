@@ -88,14 +88,18 @@ function appToDTO(a: {
 /**
  * Automatically seeds initial keywords for a newly tracked app.
  *
- * Strategy (modeled after AppKittie):
- *  1. Extract DESCRIPTIVE words from the app name — skip the brand/trademark
- *     portion (the part before the first colon or dash).
- *  2. Generate compound search terms by combining those words with common
- *     App Store search modifiers (e.g. "exercises", "trainer", "app").
- *  3. Add high-value genre-specific keywords.
- *  4. Filter out any keyword with popularity < 20 (nobody is searching for it).
- *  5. Never add the developer's personal/company name as a keyword.
+ * Strategy (modeled after AppKittie), highest-signal source first:
+ *  0. MINE COMPETITOR TITLES — search the niche's seed terms, then harvest the
+ *     n-grams that recur across rival app titles/subtitles (the money keywords).
+ *  1. Pull descriptive phrases from the app's own subtitle.
+ *  2. Add curated genre-specific keywords.
+ *  3. Add frequent, strong bigrams from the app's description.
+ *  4. Add a few "<category word> + modifier" combos (capped, to avoid noise).
+ *  5. Fall back to standalone descriptive words.
+ *  Then: validate each candidate's live popularity/rank, drop low-volume terms,
+ *  cap near-duplicates sharing a leading word, and keep the top ~22.
+ *  Brand/developer-name tokens are never emitted as keywords. Apostrophes
+ *  (straight and curly) are stripped so "Men's" never becomes "men s".
  */
 async function seedKeywordsForApp(appId: string): Promise<void> {
   try {
@@ -128,8 +132,13 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
     const appDetails = await lookupApp(app.appleId, app.country);
 
     // ── Step 1: Normalize names and separate brand from descriptive subtitle ────────────────────
-    // Clean name by fusing apostrophes first (e.g. "Men's" -> "Mens") to prevent broken keywords
-    const nameLower = app.name.toLowerCase().replace(/'s\b/g, "s");
+    // Strip apostrophes (straight ' AND curly ' U+2019 / ʼ U+02BC) so "Men's" -> "mens"
+    // cleanly. The old /'s\b/ regex missed curly quotes, producing junk like "men s".
+    const stripApos = (s: string) => s.replace(/[‘’ʼ']/g, "");
+    const clean = (s: string) =>
+      stripApos(s.toLowerCase()).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
+    const nameLower = stripApos(app.name.toLowerCase());
     const separatorIdx = nameLower.search(/[:\-–—|]/);
 
     // Brand = everything before the first separator (or the entire first word)
@@ -153,23 +162,14 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
     ]);
 
     // Build a set of brand tokens to exclude from keyword generation (only exclude non-generic terms)
-    const brandTokensRaw = brandPart
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length >= 2);
-
+    const brandTokensRaw = clean(brandPart).split(/\s+/).filter((w) => w.length >= 2);
     const brandTokensToExclude = new Set(
       brandTokensRaw.filter((w) => !genericASOWords.has(w))
     );
 
     // Also exclude developer name tokens
     const devTokens = new Set(
-      app.developer
-        .toLowerCase()
-        .replace(/'s\b/g, "s")
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((w) => w.length >= 2)
+      clean(app.developer).split(/\s+/).filter((w) => w.length >= 2)
     );
 
     const stopwords = new Set([
@@ -179,26 +179,77 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
       "lite", "premium", "daily", "easy", "simple", "smart", "super",
     ]);
 
+    // Weak/filler words — when an n-gram is built only from these it's low quality
+    // (this is what produced "effects pelvic"). Used to gate every candidate.
+    const weakWords = new Set([
+      "get", "got", "use", "using", "used", "make", "makes", "made", "help", "helps",
+      "helped", "want", "need", "like", "just", "more", "most", "very", "much", "good",
+      "great", "now", "today", "time", "times", "day", "days", "way", "ways", "one",
+      "two", "also", "first", "every", "both", "into", "over", "when", "what", "why",
+      "how", "who", "will", "can", "set", "sets", "start", "starts", "keep", "keeps",
+      "take", "takes", "let", "lets", "effect", "effects", "result", "results",
+      "feature", "features", "version", "things", "well", "out", "off", "per",
+    ]);
+
+    // A "strong" token is meaningful enough to anchor a keyword.
+    const isStrong = (w: string) =>
+      w.length >= 3 &&
+      !stopwords.has(w) &&
+      !weakWords.has(w) &&
+      !brandTokensToExclude.has(w) &&
+      !devTokens.has(w);
+
     // ── Step 2: Extract meaningful descriptive words from the ENTIRE name ────────────────────────
     // This ensures whitelisted brand words (like "kegel" in "Dr. Kegel") participate in modifier generation
-    const descWords = nameLower
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter(
-        (w) =>
-          w.length >= 3 &&
-          !stopwords.has(w) &&
-          !brandTokensToExclude.has(w) &&
-          !devTokens.has(w)
-      );
+    const descWords = clean(nameLower).split(/\s+/).filter(isStrong);
 
     // ── Step 3: Priority-Ordered Candidate Buckets ───────────────────────────
-    const bucket1 = new Set<string>(); // Direct Title/Subtitle Segments (Highest Priority)
+    const bucket0 = new Map<string, number>(); // Competitor title n-grams (score = recurrence) — HIGHEST VALUE
+    const bucket1 = new Set<string>(); // Direct Title/Subtitle Segments (own app)
     const bucket2 = new Set<string>(); // Dynamic NLP Description-Extracted Bigrams
     const bucket3 = new Set<string>(); // Brand Word Modifiers (e.g. whitelisted "kegel" + modifier)
     const bucket4 = new Set<string>(); // Curated Genre/Category Keywords
-    const bucket5 = new Set<string>(); // Generated Compound ASO Combinations
-    const bucket6 = new Set<string>(); // Standalone Descriptive Words
+    const bucket5 = new Set<string>(); // Standalone Descriptive Words
+
+    // A) BUCKET 0: Mine keywords from COMPETITOR titles/subtitles ─────────────
+    // The core signal AppKittie leans on: rival apps pack their target keywords
+    // into their titles, so n-grams recurring across many competitors in the same
+    // niche (e.g. "pelvic floor", "bladder control") are the real money terms.
+    const seedQueries: string[] = [];
+    // a) Distinctive category words living in the brand (e.g. "kegel" in "Dr. Kegel")
+    brandTokensRaw
+      .filter((w) => genericASOWords.has(w) && w.length >= 3)
+      .forEach((w) => seedQueries.push(w));
+    // b) The descriptive subtitle as a short phrase (e.g. "mens health")
+    const subPhrase = clean(descriptivePart).split(/\s+/).filter(isStrong).slice(0, 3).join(" ");
+    if (subPhrase.length >= 3) seedQueries.push(subPhrase);
+    // c) Fallback: the longest descriptive word
+    if (seedQueries.length === 0 && descWords.length) {
+      seedQueries.push([...descWords].sort((a, b) => b.length - a.length)[0]);
+    }
+    const finalSeeds = [...new Set(seedQueries)].slice(0, 2);
+
+    for (const seed of finalSeeds) {
+      let competitors: Awaited<ReturnType<typeof searchApps>> = [];
+      try {
+        competitors = await searchApps(seed, app.country, 50);
+      } catch {
+        continue; // skip a seed if Apple rate-limits; other seeds still contribute
+      }
+      for (const comp of competitors) {
+        if (String(comp.trackId) === String(app.appleId)) continue; // skip the app itself
+        // Split the competitor title on separators so brand and subtitle mine separately.
+        const segments = stripApos(comp.trackName.toLowerCase()).split(/[:\-–—|()[\]]/);
+        for (const seg of segments) {
+          const words = seg.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(isStrong);
+          for (const w of words) bucket0.set(w, (bucket0.get(w) ?? 0) + 1); // unigrams
+          for (let i = 0; i < words.length - 1; i++) {
+            const bg = `${words[i]} ${words[i + 1]}`;
+            bucket0.set(bg, (bucket0.get(bg) ?? 0) + 2); // bigrams weighted higher
+          }
+        }
+      }
+    }
 
     // A) BUCKET 1: Multi-word descriptive phrases from subtitle segments
     const subtitleSegments = descriptivePart
@@ -220,9 +271,7 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
     // B) BUCKET 2: Dynamic NLP Description-Extracted Bigrams (Unlocks keyword extraction for ANY app niche)
     const description = appDetails?.description || "";
     if (description) {
-      const sentences = description
-        .toLowerCase()
-        .replace(/'s\b/g, "s")
+      const sentences = stripApos(description.toLowerCase())
         .split(/[.!?;\n\-\u2022]/)
         .map(s => s.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim())
         .filter(s => s.length > 5);
@@ -230,37 +279,32 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
       const bigramCounts: Record<string, number> = {};
 
       for (const sentence of sentences) {
-        const words = sentence.split(/\s+/).filter(w => w.length >= 3);
+        const words = sentence.split(/\s+/);
         for (let i = 0; i < words.length - 1; i++) {
           const w1 = words[i];
-          const w2 = words[i+1];
-          if (stopwords.has(w1) || stopwords.has(w2)) continue;
-          if (brandTokensToExclude.has(w1) || brandTokensToExclude.has(w2)) continue;
-          if (devTokens.has(w1) || devTokens.has(w2)) continue;
+          const w2 = words[i + 1];
+          // BOTH words must be strong \u2014 kills junk bigrams like "effects pelvic".
+          if (!isStrong(w1) || !isStrong(w2)) continue;
           const bigram = `${w1} ${w2}`;
           bigramCounts[bigram] = (bigramCounts[bigram] || 0) + 1;
         }
       }
 
-      // Keep frequent bigrams (occurring at least twice) to extract dynamic high-value phrases
-      const sortedBigrams = Object.entries(bigramCounts)
-        .filter(([, count]) => count >= 2)
+      // Require >= 3 occurrences (raised from 2) to keep only genuinely repeated phrases.
+      Object.entries(bigramCounts)
+        .filter(([, count]) => count >= 3)
         .sort((a, b) => b[1] - a[1])
-        .map(([bigram]) => bigram);
-
-      sortedBigrams.slice(0, 15).forEach(b => bucket2.add(b));
+        .slice(0, 10)
+        .forEach(([bigram]) => bucket2.add(bigram));
     }
 
-    // C) BUCKET 3: Whitelisted Brand Modifiers (e.g. whitelisted "kegel" + exercises)
-    const brandWordsInDesc = descWords.filter(w => brandPart.includes(w));
-    const brandModifiers = [
-      "exercises", "trainer", "tracker", "workout", "coach", "health", "app"
-    ];
-    for (const w of brandWordsInDesc) {
-      for (const mod of brandModifiers) {
-        if (w !== mod) {
-          bucket3.add(`${w} ${mod}`);
-        }
+    // C) BUCKET 3: Limited brand-word + modifier combos.
+    // Only the single strongest category word (e.g. "kegel") gets a few modifiers,
+    // instead of flooding the list with near-duplicate "<word> X" combinations.
+    const primaryWord = descWords.find((w) => brandPart.includes(w)) ?? descWords[0];
+    if (primaryWord) {
+      for (const mod of ["exercises", "trainer", "workout", "app"]) {
+        if (primaryWord !== mod) bucket3.add(`${primaryWord} ${mod}`);
       }
     }
 
@@ -341,54 +385,41 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
       }
     }
 
-    // E) BUCKET 5: Generated Compound ASO Combinations (Pairwise modifiers & descWords)
-    const modifiers = [
-      "exercises", "trainer", "tracker", "app", "workout",
-      "coach", "health", "guide", "routine", "plan",
-    ];
+    // E) BUCKET 5: Standalone Descriptive Words (lowest priority fallback)
     for (const w of descWords) {
-      for (const mod of modifiers) {
-        if (w !== mod) {
-          bucket5.add(`${w} ${mod}`);
-        }
-      }
-    }
-    for (let i = 0; i < descWords.length; i++) {
-      for (let j = 0; j < descWords.length; j++) {
-        if (i !== j) {
-          bucket5.add(`${descWords[i]} ${descWords[j]}`);
-        }
-      }
-    }
-
-    // F) BUCKET 6: Standalone Descriptive Words
-    for (const w of descWords) {
-      bucket6.add(w);
+      bucket5.add(w);
     }
 
     // ── Step 4: Strict Priority-Preserving Deduplication & Merge ──────────────
     const allCandidatesOrdered = new Set<string>();
-    const addToCandidates = (bucketSet: Set<string>) => {
-      for (let term of bucketSet) {
-        term = term.trim().toLowerCase();
-        if (brandTokensToExclude.has(term)) continue;
-        if (devTokens.has(term)) continue;
-        if (term.length < 3 || term.length > 35) continue;
-        const termWords = term.split(/\s+/);
-        if (termWords.length > 0 && termWords.every((w) => brandTokensToExclude.has(w) || devTokens.has(w))) continue;
-        allCandidatesOrdered.add(term);
-      }
+    const addCandidate = (raw: string) => {
+      const term = raw.trim().toLowerCase();
+      if (brandTokensToExclude.has(term)) return;
+      if (devTokens.has(term)) return;
+      if (term.length < 3 || term.length > 35) return;
+      const termWords = term.split(/\s+/);
+      // Drop terms made entirely of brand/dev tokens, or with no strong word at all.
+      if (termWords.every((w) => brandTokensToExclude.has(w) || devTokens.has(w))) return;
+      if (!termWords.some(isStrong)) return;
+      allCandidatesOrdered.add(term);
     };
+    const addBucket = (bucketSet: Set<string>) => bucketSet.forEach(addCandidate);
 
-    addToCandidates(bucket1);
-    addToCandidates(bucket2);
-    addToCandidates(bucket3);
-    addToCandidates(bucket4);
-    addToCandidates(bucket5);
-    addToCandidates(bucket6);
+    // Priority order: competitor-mined n-grams first (the highest-signal source),
+    // then the app's own subtitle, curated genre terms, description bigrams,
+    // brand combos, and finally standalone words.
+    [...bucket0.entries()]
+      .filter(([, score]) => score >= 2) // term must recur across competitor titles
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([term]) => addCandidate(term));
+    addBucket(bucket1);
+    addBucket(bucket4);
+    addBucket(bucket2);
+    addBucket(bucket3);
+    addBucket(bucket5);
 
-    // Slice the top 25 candidates for validation to protect Apple Search API rate limits
-    const termsToCheck = Array.from(allCandidatesOrdered).slice(0, 25);
+    // Validate the top candidates (cap protects Apple's Search API rate limits).
+    const termsToCheck = Array.from(allCandidatesOrdered).slice(0, 26);
 
     // ── Step 5: Parallel Metric Compilation & Smart Selection ────────────────────
     const results = await Promise.allSettled(
@@ -398,14 +429,14 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
       })
     );
 
-    // Collect terms matching ASO search volume criteria:
-    // popularity >= 20 OR (popularity >= 12 AND ranks in top 200)
+    // Collect terms matching ASO search-volume criteria:
+    // popularity >= 20, OR a real ranking term with some volume (pop >= 14 AND ranked in top 150).
     const viable: { term: string; metrics: Awaited<ReturnType<typeof computeKeywordMetrics>> }[] = [];
     for (const r of results) {
       if (r.status === "fulfilled") {
         const pop = r.value.metrics.popularity ?? 0;
         const pos = r.value.metrics.position;
-        if (pop >= 20 || (pop >= 12 && pos !== null)) {
+        if (pop >= 20 || (pop >= 14 && pos !== null && pos <= 150)) {
           viable.push(r.value);
         }
       }
@@ -421,8 +452,18 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
       return (b.metrics.popularity ?? 0) - (a.metrics.popularity ?? 0);
     });
 
-    // Take top 20 highest-value keywords to expand coverage
-    const finalKeywords = viable.slice(0, 20);
+    // Diversity cap: at most 3 keywords may share the same leading word, so the
+    // list isn't swamped by near-duplicate "<brand> X" terms (e.g. five "kegel ___").
+    const leadCounts: Record<string, number> = {};
+    const diversified: typeof viable = [];
+    for (const v of viable) {
+      const lead = v.term.split(/\s+/)[0];
+      leadCounts[lead] = (leadCounts[lead] ?? 0) + 1;
+      if (leadCounts[lead] <= 3) diversified.push(v);
+    }
+
+    // Take the top 22 highest-value, diversified keywords.
+    const finalKeywords = diversified.slice(0, 22);
 
     // ── Step 6: Persist Seeding to Database ─────────────────────────────────────────
     await Promise.allSettled(
