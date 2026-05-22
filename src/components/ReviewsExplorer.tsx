@@ -11,6 +11,8 @@ import {
   Smartphone,
   MessageSquare,
   Layers,
+  Download,
+  ChevronDown,
 } from "lucide-react";
 import { COUNTRIES, compact } from "@/lib/format";
 import type { Review, ReviewedApp, ReviewSummary } from "@/lib/aso/reviews";
@@ -233,17 +235,20 @@ export default function ReviewsExplorer({
                 </FilterChip>
               ))}
             </div>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-              className="rounded-lg border border-line bg-surface px-3 py-2 text-xs outline-none transition-all duration-200 focus:border-lime/80 cursor-pointer text-white"
-            >
-              {SORTS.map((s) => (
-                <option key={s.key} value={s.key} className="bg-surface">
-                  {s.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                className="rounded-lg border border-line bg-surface px-3 py-2 text-xs outline-none transition-all duration-200 focus:border-lime/80 cursor-pointer text-white"
+              >
+                {SORTS.map((s) => (
+                  <option key={s.key} value={s.key} className="bg-surface">
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <ExportMenu result={result} />
+            </div>
           </div>
 
           {/* Review list */}
@@ -518,6 +523,168 @@ function fmtDate(iso: string): string {
   if (diffDays === 1) return "yesterday";
   if (diffDays < 30) return `${diffDays}d ago`;
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+// ── Export helpers ────────────────────────────────────────────────────────────
+
+function csvCell(s: string): string {
+  return `"${String(s).replace(/"/g, '""')}"`;
+}
+
+function buildCSV(reviews: Review[]): string {
+  const header = ["Rating", "Title", "Body", "Author", "Version", "Date", "Helpful Votes"].join(",");
+  const rows = reviews.map((r) =>
+    [
+      r.rating,
+      csvCell(r.title ?? ""),
+      csvCell(r.content),
+      csvCell(r.author),
+      csvCell(r.version ?? ""),
+      r.updated ? r.updated.slice(0, 10) : "",
+      r.voteSum,
+    ].join(","),
+  );
+  return [header, ...rows].join("\n");
+}
+
+function buildMarkdown(reviews: Review[], app: ReviewedApp, summary: ReviewSummary): string {
+  const dist = ([5, 4, 3, 2, 1] as const)
+    .map((n) => {
+      const pct = summary.count ? Math.round((summary.distribution[n] / summary.count) * 100) : 0;
+      return `  - ${n}★: ${summary.distribution[n]} reviews (${pct}%)`;
+    })
+    .join("\n");
+
+  const header = `# App Store Reviews — ${app.name}
+
+**Developer:** ${app.developer}
+**Apple ID:** ${app.appleId}
+**Country:** ${app.country.toUpperCase()}
+**Lifetime rating:** ${app.avgRating?.toFixed(1) ?? "—"} across ${compact(app.ratingCount)} ratings
+**Exported:** ${new Date().toISOString().slice(0, 10)}
+
+## Recent Sentiment (${summary.count} reviews)
+
+**Average:** ${summary.average.toFixed(2)}★
+
+**Distribution:**
+${dist}
+
+---
+
+## Reviews
+
+`;
+
+  const blocks = reviews
+    .map((r, i) => {
+      const stars = "★".repeat(Math.round(r.rating)) + "☆".repeat(5 - Math.round(r.rating));
+      const meta = [r.updated?.slice(0, 10), r.version ? `v${r.version}` : null]
+        .filter(Boolean)
+        .join(" · ");
+      const helpful = r.voteSum > 0 ? ` · ${r.voteSum} helpful` : "";
+      return `### ${i + 1}. ${stars} ${r.title ?? "(no title)"}
+*${r.author}${meta ? ` · ${meta}` : ""}${helpful}*
+
+${r.content}`;
+    })
+    .join("\n\n---\n\n");
+
+  return header + blocks;
+}
+
+function triggerDownload(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ExportMenu({ result }: { result: ReviewsResult }) {
+  const [open, setOpen] = useState(false);
+  const slug = result.app.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  const date = new Date().toISOString().slice(0, 10);
+
+  const options = [
+    {
+      label: "Markdown",
+      sub: "Best for Claude / AI",
+      glyph: "✦",
+      action() {
+        triggerDownload(
+          `${slug}-reviews-${date}.md`,
+          buildMarkdown(result.reviews, result.app, result.summary),
+          "text/markdown",
+        );
+      },
+    },
+    {
+      label: "CSV",
+      sub: "Spreadsheet-ready",
+      glyph: "⊞",
+      action() {
+        triggerDownload(`${slug}-reviews-${date}.csv`, buildCSV(result.reviews), "text/csv");
+      },
+    },
+    {
+      label: "JSON",
+      sub: "Full structured data",
+      glyph: "{}",
+      action() {
+        triggerDownload(
+          `${slug}-reviews-${date}.json`,
+          JSON.stringify(result, null, 2),
+          "application/json",
+        );
+      },
+    },
+  ];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-medium text-muted transition-all duration-150 hover:border-line/80 hover:text-white active:scale-95 cursor-pointer"
+      >
+        <Download size={13} />
+        Export
+        <ChevronDown
+          size={11}
+          className={`transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <>
+          {/* backdrop */}
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full z-20 mt-1.5 w-52 overflow-hidden rounded-xl border border-line bg-surface shadow-xl shadow-black/40">
+            {options.map((opt, i) => (
+              <button
+                key={opt.label}
+                onClick={() => { opt.action(); setOpen(false); }}
+                className={[
+                  "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2 cursor-pointer",
+                  i < options.length - 1 ? "border-b border-line/50" : "",
+                ].join(" ")}
+              >
+                <span className="mt-0.5 w-5 shrink-0 text-center font-mono text-xs text-faint">
+                  {opt.glyph}
+                </span>
+                <div>
+                  <p className="text-xs font-semibold text-white">{opt.label}</p>
+                  <p className="text-[11px] text-faint">{opt.sub}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function ReviewsSkeleton() {
