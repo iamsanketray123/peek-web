@@ -43,6 +43,21 @@ export default function AppDetail({
   const [refreshing, startRefresh] = useTransition();
   const [removingId, setRemovingId] = useState<string | null>(null);
 
+  const sortedKeywords = [...keywords].sort((a, b) => {
+    const posA = a.position;
+    const posB = b.position;
+    if (posA !== null && posB !== null) {
+      return posA - posB;
+    }
+    if (posA !== null) return -1;
+    if (posB !== null) return 1;
+    
+    // Both not ranked: sort by popularity descending
+    const popA = a.popularity ?? 0;
+    const popB = b.popularity ?? 0;
+    return popB - popA;
+  });
+
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -202,7 +217,7 @@ export default function AppDetail({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line/40">
-                  {keywords.map((k) => (
+                  {sortedKeywords.map((k) => (
                     <tr key={k.id} className="group border-b border-line/60 last:border-0 hover:bg-surface/40 transition-colors duration-150">
                       <td className="px-5 py-4 font-medium text-white">{k.term}</td>
                       <td className="px-5 py-4">
@@ -250,7 +265,7 @@ export default function AppDetail({
           </p>
         </>
       ) : (
-        <HistoryTab keywords={keywords} />
+        <HistoryTab keywords={sortedKeywords} />
       )}
     </div>
   );

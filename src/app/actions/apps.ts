@@ -153,22 +153,22 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
   const genreLower = genre.toLowerCase();
   
   const categoryMap: Record<string, string[]> = {
-    "health & fitness": ["health", "fitness", "workout", "workout planner", "daily exercise"],
-    "health": ["health", "fitness", "workout", "workout planner", "daily exercise"],
-    "medical": ["medical", "health tracker", "doctor", "symptoms", "health"],
-    "productivity": ["productivity", "habit tracker", "calendar", "to do list", "planner"],
-    "finance": ["finance", "budget", "money tracker", "expense tracker", "saving"],
-    "business": ["business", "networking", "productivity", "management", "organizer"],
-    "education": ["education", "learning", "study", "flashcards", "dictionary"],
-    "utilities": ["utilities", "tools", "cleaner", "file manager", "qr scanner"],
-    "lifestyle": ["lifestyle", "daily routine", "meditation", "self care", "mindfulness"],
-    "entertainment": ["entertainment", "videos", "streaming", "movies", "fun"],
-    "photo & video": ["photo editor", "video editor", "camera", "filters", "collage"],
-    "shopping": ["shopping", "deals", "coupons", "store", "buy online"],
-    "travel": ["travel", "flights", "hotels", "navigation", "trip planner"],
-    "social networking": ["social", "chat", "messenger", "meet people", "networking"],
-    "social": ["social", "chat", "messenger", "meet people", "networking"],
-    "games": ["games", "arcade", "puzzle", "action game", "casual game"]
+    "health & fitness": ["health", "fitness", "workout", "workout planner", "daily exercise", "gym", "cardio", "stretching", "weight loss", "calorie counter", "health tracker"],
+    "health": ["health", "fitness", "workout", "workout planner", "daily exercise", "gym", "cardio", "stretching", "weight loss", "calorie counter", "health tracker"],
+    "medical": ["medical", "health tracker", "doctor", "symptoms", "health", "medicine", "pill reminder", "first aid", "anatomy"],
+    "productivity": ["productivity", "habit tracker", "calendar", "to do list", "planner", "notes", "focus timer", "reminders", "organizer", "task manager"],
+    "finance": ["finance", "budget", "money tracker", "expense tracker", "saving", "bills", "personal finance", "wallet", "investment", "credit score"],
+    "business": ["business", "networking", "productivity", "management", "organizer", "invoices", "scan", "receipts", "job search", "meetings"],
+    "education": ["education", "learning", "study", "flashcards", "dictionary", "homework", "math", "languages", "courses", "skills"],
+    "utilities": ["utilities", "tools", "cleaner", "file manager", "qr scanner", "calculator", "vpn", "speed test", "battery", "backup"],
+    "lifestyle": ["lifestyle", "daily routine", "meditation", "self care", "mindfulness", "sleep tracker", "journal", "habits", "breathing", "yoga"],
+    "entertainment": ["entertainment", "videos", "streaming", "movies", "fun", "music", "podcasts", "tv shows", "comedy", "tickets"],
+    "photo & video": ["photo editor", "video editor", "camera", "filters", "collage", "retouch", "background eraser", "slideshow", "effects"],
+    "shopping": ["shopping", "deals", "coupons", "store", "buy online", "discounts", "grocery list", "fashion", "delivery", "wishlist"],
+    "travel": ["travel", "flights", "hotels", "navigation", "trip planner", "maps", "booking", "car rental", "explore", "translation"],
+    "social networking": ["social", "chat", "messenger", "meet people", "networking", "friends", "calls", "groups", "dating", "communities"],
+    "social": ["social", "chat", "messenger", "meet people", "networking", "friends", "calls", "groups", "dating", "communities"],
+    "games": ["games", "arcade", "puzzle", "action game", "casual game", "strategy", "adventure", "trivia", "racer", "simulator"]
   };
 
   let matchedGenre = "";
@@ -183,10 +183,10 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
     categoryMap[matchedGenre].forEach((t) => seedTerms.add(t));
   }
 
-  // Convert to Array, clean, filter, and limit to max 8 high-quality terms
+  // Convert to Array, clean, filter, and limit to max 15 high-quality terms
   const finalTerms = Array.from(seedTerms)
     .filter((t) => t.length >= 3 && t.length <= 30)
-    .slice(0, 8);
+    .slice(0, 15);
 
   // Seed metrics and ranks in parallel
   await Promise.allSettled(
