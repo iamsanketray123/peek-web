@@ -81,6 +81,136 @@ function appToDTO(a: {
   };
 }
 
+/**
+ * Automatically seeds initial keywords for a newly tracked app
+ * based on its name, developer name, and primary genre.
+ */
+async function seedKeywordsForApp(appId: string): Promise<void> {
+  const app = await prisma.trackedApp.findUnique({
+    where: { id: appId },
+    include: { keywords: true },
+  });
+  if (!app || app.keywords.length > 0) return;
+
+  const seedTerms = new Set<string>();
+
+  // 1. Extract from App Name
+  // Split by common delimiters: :, -, |, &, +, •, /, \
+  const nameParts = app.name
+    .split(/[:\-|&+•/\\()]/)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 3);
+
+  for (const part of nameParts) {
+    // Sanitize segment: remove special characters/emojis/quotes, leave letters, numbers, spaces
+    const clean = part
+      .toLowerCase()
+      .replace(/['"’]/g, "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    
+    // Ensure it's a high-quality search term (e.g. 3 to 30 chars, and not too many words)
+    if (clean.length >= 3 && clean.length <= 30 && clean.split(/\s+/).length <= 4) {
+      seedTerms.add(clean);
+    }
+  }
+
+  // Also extract specific meaningful words from name
+  const stopwords = new Set([
+    "for", "the", "and", "with", "app", "by", "of", "to", "in", "on", "at", "an", "a",
+    "your", "my", "our", "their", "its", "is", "are", "be", "or", "as", "from", "that"
+  ]);
+  const words = app.name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !stopwords.has(w));
+
+  if (words.length > 0) {
+    // Add first single word
+    seedTerms.add(words[0]);
+    if (words.length > 1) {
+      // Add first two words combined
+      seedTerms.add(`${words[0]} ${words[1]}`);
+    }
+  }
+
+  // 2. Add Developer name (cleaned up)
+  const cleanDev = app.developer
+    .toLowerCase()
+    .replace(/['"’]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const devWords = cleanDev.split(/\s+/);
+  if (devWords.length > 0 && devWords[0].length >= 3 && !stopwords.has(devWords[0])) {
+    seedTerms.add(devWords[0]);
+  }
+
+  // 3. Category/Genre specific standard keywords
+  const genre = app.primaryGenre || "";
+  const genreLower = genre.toLowerCase();
+  
+  const categoryMap: Record<string, string[]> = {
+    "health & fitness": ["health", "fitness", "workout", "workout planner", "daily exercise"],
+    "health": ["health", "fitness", "workout", "workout planner", "daily exercise"],
+    "medical": ["medical", "health tracker", "doctor", "symptoms", "health"],
+    "productivity": ["productivity", "habit tracker", "calendar", "to do list", "planner"],
+    "finance": ["finance", "budget", "money tracker", "expense tracker", "saving"],
+    "business": ["business", "networking", "productivity", "management", "organizer"],
+    "education": ["education", "learning", "study", "flashcards", "dictionary"],
+    "utilities": ["utilities", "tools", "cleaner", "file manager", "qr scanner"],
+    "lifestyle": ["lifestyle", "daily routine", "meditation", "self care", "mindfulness"],
+    "entertainment": ["entertainment", "videos", "streaming", "movies", "fun"],
+    "photo & video": ["photo editor", "video editor", "camera", "filters", "collage"],
+    "shopping": ["shopping", "deals", "coupons", "store", "buy online"],
+    "travel": ["travel", "flights", "hotels", "navigation", "trip planner"],
+    "social networking": ["social", "chat", "messenger", "meet people", "networking"],
+    "social": ["social", "chat", "messenger", "meet people", "networking"],
+    "games": ["games", "arcade", "puzzle", "action game", "casual game"]
+  };
+
+  let matchedGenre = "";
+  for (const key of Object.keys(categoryMap)) {
+    if (genreLower.includes(key) || key.includes(genreLower)) {
+      matchedGenre = key;
+      break;
+    }
+  }
+
+  if (matchedGenre && categoryMap[matchedGenre]) {
+    categoryMap[matchedGenre].forEach((t) => seedTerms.add(t));
+  }
+
+  // Convert to Array, clean, filter, and limit to max 8 high-quality terms
+  const finalTerms = Array.from(seedTerms)
+    .filter((t) => t.length >= 3 && t.length <= 30)
+    .slice(0, 8);
+
+  // Seed metrics and ranks in parallel
+  await Promise.allSettled(
+    finalTerms.map(async (term) => {
+      try {
+        const metrics = await computeKeywordMetrics(app.appleId, term, app.country);
+        await prisma.appKeyword.create({
+          data: {
+            appId: app.id,
+            term,
+            popularity: metrics.popularity,
+            difficulty: metrics.difficulty,
+            difficultyLabel: metrics.difficultyLabel,
+            metricsUpdatedAt: new Date(),
+            snapshots: { create: { position: metrics.position } },
+          },
+        });
+      } catch (err) {
+        console.error(`Failed to seed keyword "${term}" for app ${app.id}:`, err);
+      }
+    })
+  );
+}
+
 // ── App CRUD ──────────────────────────────────────────────────────────────
 
 /**
@@ -132,6 +262,11 @@ export async function addTrackedApp(input: {
     },
     include: { _count: { select: { keywords: true } } },
   });
+
+  // Seed keywords if this is a newly created app tracking list
+  if (rec._count.keywords === 0) {
+    await seedKeywordsForApp(rec.id);
+  }
 
   revalidatePath("/apps");
   return appToDTO(rec);
