@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
+import { TopLoader } from "@/components/TopLoader";
 import { getUser } from "@/lib/supabase/server";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -21,6 +22,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-ink font-sans text-white">
+        <TopLoader />
         <div className="flex min-h-screen">
           <Sidebar userEmail={user?.email ?? null} />
           <main className="min-w-0 flex-1">{children}</main>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, Loader2, ExternalLink, X, Star, Trash2, Bookmark, CheckCircle2 } from "lucide-react";
@@ -39,6 +39,7 @@ export default function KeywordExplorer({
   const [saved, setSaved] = useState<SavedKeywordDTO[]>(initialSaved);
   const [savingState, setSavingState] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok });
@@ -51,7 +52,13 @@ export default function KeywordExplorer({
 
   async function analyze(term: string, ctry: string) {
     const q = term.trim();
-    if (!q || loading) return;
+    if (!q) return;
+
+    // Cancel any in-flight request so the user never waits for a stale result.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError(null);
     try {
@@ -59,15 +66,18 @@ export default function KeywordExplorer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ keyword: q, country: ctry }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
       setResult(data as KeywordAnalysis);
     } catch (err) {
+      if ((err as Error).name === "AbortError") return; // silently cancelled — do not update state
       setError((err as Error).message);
       setResult(null);
     } finally {
-      setLoading(false);
+      // Only clear loading if this controller is still the active one
+      if (abortRef.current === controller) setLoading(false);
     }
   }
 
@@ -193,9 +203,8 @@ export default function KeywordExplorer({
               <ul className="max-h-[600px] divide-y divide-line/40 overflow-y-auto">
                 {saved.map((s) => (
                   <li key={s.id} className="group flex items-center gap-3 px-4 py-3 hover:bg-surface-2/40 transition-colors">
-                    <button 
-                      onClick={() => openSaved(s)} 
-                      disabled={loading}
+                    <button
+                      onClick={() => openSaved(s)}
                       className="min-w-0 flex-1 text-left active:scale-[0.98] transition-transform duration-100 cursor-pointer"
                     >
                       <div className="flex flex-col gap-1.5">
