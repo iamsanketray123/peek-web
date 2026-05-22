@@ -127,21 +127,23 @@ Port `respectaso/aso/scoring.py` + the estimator classes from `services.py` to T
 - [ ] Unit tests for scoring parity vs respectaso *(see §4)*
 - [ ] Port the finance-intent relevance guard + verify difficulty post-processing caps against respectaso (v1 approximations)
 
-### Phase 2 — Accounts & auth
-- [ ] Sign up / log in / log out (email + OAuth)
-- [ ] Protect dashboard routes; scope all data to userId
-- [ ] Free vs Pro plan flag (gate nothing yet, just the field)
-- [ ] Account/settings page
+### Phase 2 — Accounts & auth  ✅ DONE
+- [x] Sign up / log in / log out (email) — Supabase Auth via `@supabase/ssr`, cookie sessions
+- [x] Protect dashboard routes; scope all data to userId — server actions require `getUser()`
+- [ ] Free vs Pro plan flag (gate nothing yet, just the field) — deferred
+- [ ] Account/settings page — deferred
+- Note: email-confirm redirect fixed (Site URL + `/auth/callback` redirect URLs in Supabase); `page.tsx` forwards stray `?code` to callback as a safety net.
 
-### Phase 3 — App Tracking
-- [ ] Add app flow (paste App Store URL / ID / search by name → iTunes lookup) — see Peek's `extractAppleID`
-- [ ] App list ("Your Apps") with keyword count + last-updated
-- [ ] App detail: Keywords tab (Position + delta, Popularity, Difficulty, Apps, Growth sparkline)
-- [ ] Rank lookup: find app's position per keyword (`lib/aso/rank.ts`)
-- [ ] Add/remove keywords per app; custom keyword support
-- [ ] Position History tab (chart from RankSnapshot)
-- [ ] **Vercel Cron** daily job → record RankSnapshot + KeywordMetricSnapshot for all tracked app-keywords
-- [ ] Growth sparklines fed from snapshots
+### Phase 3 — App Tracking  ✅ DONE
+- [x] Add app flow (paste App Store URL / ID / search by name → iTunes lookup) — `actions/apps.ts addTrackedApp`, reuses `extractAppleId`/`lookupApp`/`searchApps`
+- [x] App list ("Your Apps") with keyword count — `/apps` + `AppsManager.tsx`
+- [x] App detail: Keywords tab (Position + delta, Popularity, Difficulty) — `/apps/[id]` + `AppDetail.tsx`
+- [x] Rank lookup: find app's position per keyword (`lib/aso/rank.ts`) — uses iTunes search relevance ordering (limit 200) as a free, stable rank proxy; isolated for future SSR swap
+- [x] Add/remove keywords per app — `addAppKeyword`/`removeAppKeyword`
+- [x] Position History tab (chart from RankSnapshot) — inline SVG `RankChart.tsx` (rank-1-at-top, gaps for not-ranked)
+- [x] **Vercel Cron** daily job → record RankSnapshot for all tracked app-keywords — `/api/cron/snapshots` (CRON_SECRET-protected), `vercel.json` schedule `0 8 * * *`
+- [x] Growth sparklines fed from snapshots — per-keyword mini `RankChart` in the table
+- [ ] *Future:* true App Store SSR rank parsing, KeywordMetricSnapshot trend lines, manual rank-depth tuning
 
 ### Phase 4 — Explore / discovery (appkittie parity)
 - [ ] Database (browse/search apps via iTunes)
@@ -193,3 +195,12 @@ Port `respectaso/aso/scoring.py` + the estimator classes from `services.py` to T
   - Smoke-tested live: "habit tracker" → pop 95 / diff 77 (Very Hard) / High Competition ✅
   - GitHub repo: https://github.com/iamsanketray123/peek-web
   - GitHub↔Vercel auto-deploy not wired yet (token scope missing). Push to GitHub then run `vercel --prod --yes` manually, OR connect the GitHub integration from the Vercel dashboard.
+- **2026-05-22 (build #3)** — Phase 2 (auth) shipped. Supabase project provisioned (`aajbaootpqtzsllryuzq`), `prisma db push` created `SavedKeyword`, 4 env vars added to Vercel, deployed. Fixed email-confirm redirect (Supabase Site URL/redirect URLs + `page.tsx` `?code` forwarding).
+- **2026-05-22 (build #4)** — **Phase 3 (App Tracking) shipped.**
+  - DB: `prisma db push` created `TrackedApp`, `AppKeyword`, `RankSnapshot`.
+  - `lib/aso/rank.ts`: verified iTunes search ordering is Apple's relevance rank (not rating-sorted) and **stable across calls** → used as a free rank proxy (limit 200; "not in top 200" = not ranked).
+  - Server actions `actions/apps.ts`; UI `/apps` (`AppsManager`) + `/apps/[id]` (`AppDetail` with Keywords + Position History tabs, `RankChart` SVG).
+  - Vercel Cron `/api/cron/snapshots` daily @ 08:00 UTC, `CRON_SECRET`-protected (verified 401 without bearer in prod).
+  - Sidebar "App Tracking" → `/apps`, active-state now matches sub-routes.
+  - Build clean; all routes (`/apps`, `/apps/[id]`, `/api/cron/snapshots`) live & smoke-tested.
+  - **Next session:** verify the authed add-app → add-keyword → rank flow end-to-end in the browser; consider Phase 4 (Explore/discovery) or settings/account page + Pro flag.
