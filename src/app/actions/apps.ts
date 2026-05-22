@@ -124,256 +124,334 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
       return;
     }
 
-  // ── Step 1: Separate brand from descriptive subtitle ────────────────────
-  // App names often follow: "BrandName: Descriptive Subtitle"
-  // or "BrandName - Descriptive Subtitle". The brand part is NOT a useful
-  // search keyword (nobody searches "kegex"). We want the descriptive part.
-  const nameLower = app.name.toLowerCase();
-  const separatorIdx = app.name.search(/[:\-–—|]/);
+    // ── Fetch App Store details dynamically to extract description & additional categories ──
+    const appDetails = await lookupApp(app.appleId, app.country);
 
-  // Brand = everything before the first separator (or the entire first word)
-  const brandPart = separatorIdx > 0
-    ? nameLower.slice(0, separatorIdx).trim()
-    : nameLower.split(/\s+/)[0];
+    // ── Step 1: Normalize names and separate brand from descriptive subtitle ────────────────────
+    // Clean name by fusing apostrophes first (e.g. "Men's" -> "Mens") to prevent broken keywords
+    const nameLower = app.name.toLowerCase().replace(/'s\b/g, "s");
+    const separatorIdx = nameLower.search(/[:\-–—|]/);
 
-  // Descriptive = everything after the separator, or the full name if no separator
-  const descriptivePart = separatorIdx > 0
-    ? nameLower.slice(separatorIdx + 1).trim()
-    : nameLower;
+    // Brand = everything before the first separator (or the entire first word)
+    const brandPart = separatorIdx > 0
+      ? nameLower.slice(0, separatorIdx).trim()
+      : nameLower.split(/\s+/)[0];
 
-  // Build a set of brand tokens to exclude from keyword generation
-  const brandTokens = new Set(
-    brandPart
+    // Descriptive = everything after the separator, or the full name if no separator
+    const descriptivePart = separatorIdx > 0
+      ? nameLower.slice(separatorIdx + 1).trim()
+      : nameLower;
+
+    // Define a whitelist of core/generic words that should NEVER be blocked, even if they are in the brand part
+    const genericASOWords = new Set([
+      "kegel", "kegels", "workout", "exercises", "trainer", "tracker", "timer",
+      "health", "fitness", "weight", "diet", "calorie", "run", "walk", "sleep", "mindfulness",
+      "meditation", "yoga", "habit", "tasks", "todo", "budget", "money", "finance", "study",
+      "learn", "flashcards", "focus", "pomodoro", "pelvic", "floor", "prostate", "bladder",
+      "control", "muscle", "muscles", "strength", "men", "mens", "women", "womens", "male",
+      "female"
+    ]);
+
+    // Build a set of brand tokens to exclude from keyword generation (only exclude non-generic terms)
+    const brandTokensRaw = brandPart
       .replace(/[^a-z0-9\s]/g, " ")
       .split(/\s+/)
-      .filter((w) => w.length >= 2)
-  );
+      .filter((w) => w.length >= 2);
 
-  // Also exclude developer name tokens
-  const devTokens = new Set(
-    app.developer
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length >= 2)
-  );
-
-  const stopwords = new Set([
-    "for", "the", "and", "with", "app", "by", "of", "to", "in", "on", "at",
-    "an", "a", "your", "my", "our", "their", "its", "is", "are", "be", "or",
-    "as", "from", "that", "this", "all", "pro", "plus", "new", "best", "free",
-    "lite", "premium", "daily", "easy", "simple", "smart", "super",
-  ]);
-
-  // ── Step 2: Extract meaningful descriptive words ────────────────────────
-  const descWords = descriptivePart
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter(
-      (w) =>
-        w.length >= 3 &&
-        !stopwords.has(w) &&
-        !brandTokens.has(w) &&
-        !devTokens.has(w)
+    const brandTokensToExclude = new Set(
+      brandTokensRaw.filter((w) => !genericASOWords.has(w))
     );
 
-  // ── Step 3: Generate candidate keywords ─────────────────────────────────
-  const candidates = new Set<string>();
+    // Also exclude developer name tokens
+    const devTokens = new Set(
+      app.developer
+        .toLowerCase()
+        .replace(/'s\b/g, "s")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length >= 2)
+    );
 
-  // A) Multi-word descriptive phrases from subtitle segments
-  // e.g. "Kegel & Pelvic Floor" → "kegel", "pelvic floor"
-  const subtitleSegments = descriptivePart
-    .split(/[&+,•]/)
-    .map((s) => s.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim())
-    .filter((s) => {
-      const words = s.split(/\s+/).filter((w) => w.length >= 3 && !stopwords.has(w));
-      return words.length >= 1 && words.length <= 4 && s.length >= 3 && s.length <= 30;
+    const stopwords = new Set([
+      "for", "the", "and", "with", "app", "by", "of", "to", "in", "on", "at",
+      "an", "a", "your", "my", "our", "their", "its", "is", "are", "be", "or",
+      "as", "from", "that", "this", "all", "pro", "plus", "new", "best", "free",
+      "lite", "premium", "daily", "easy", "simple", "smart", "super",
+    ]);
+
+    // ── Step 2: Extract meaningful descriptive words from the ENTIRE name ────────────────────────
+    // This ensures whitelisted brand words (like "kegel" in "Dr. Kegel") participate in modifier generation
+    const descWords = nameLower
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(
+        (w) =>
+          w.length >= 3 &&
+          !stopwords.has(w) &&
+          !brandTokensToExclude.has(w) &&
+          !devTokens.has(w)
+      );
+
+    // ── Step 3: Priority-Ordered Candidate Buckets ───────────────────────────
+    const bucket1 = new Set<string>(); // Direct Title/Subtitle Segments (Highest Priority)
+    const bucket2 = new Set<string>(); // Dynamic NLP Description-Extracted Bigrams
+    const bucket3 = new Set<string>(); // Brand Word Modifiers (e.g. whitelisted "kegel" + modifier)
+    const bucket4 = new Set<string>(); // Curated Genre/Category Keywords
+    const bucket5 = new Set<string>(); // Generated Compound ASO Combinations
+    const bucket6 = new Set<string>(); // Standalone Descriptive Words
+
+    // A) BUCKET 1: Multi-word descriptive phrases from subtitle segments
+    const subtitleSegments = descriptivePart
+      .replace(/'s\b/g, "s")
+      .split(/[&+,•:\-–—|]/)
+      .map((s) => s.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim())
+      .filter((s) => {
+        const words = s.split(/\s+/).filter((w) => w.length >= 3 && !stopwords.has(w));
+        return words.length >= 1 && words.length <= 4 && s.length >= 3 && s.length <= 30;
+      });
+
+    for (const seg of subtitleSegments) {
+      const words = seg.split(/\s+/);
+      if (!words.every(w => brandTokensToExclude.has(w) || stopwords.has(w))) {
+        bucket1.add(seg);
+      }
+    }
+
+    // B) BUCKET 2: Dynamic NLP Description-Extracted Bigrams (Unlocks keyword extraction for ANY app niche)
+    const description = appDetails?.description || "";
+    if (description) {
+      const sentences = description
+        .toLowerCase()
+        .replace(/'s\b/g, "s")
+        .split(/[.!?;\n\-\u2022]/)
+        .map(s => s.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim())
+        .filter(s => s.length > 5);
+
+      const bigramCounts: Record<string, number> = {};
+
+      for (const sentence of sentences) {
+        const words = sentence.split(/\s+/).filter(w => w.length >= 3);
+        for (let i = 0; i < words.length - 1; i++) {
+          const w1 = words[i];
+          const w2 = words[i+1];
+          if (stopwords.has(w1) || stopwords.has(w2)) continue;
+          if (brandTokensToExclude.has(w1) || brandTokensToExclude.has(w2)) continue;
+          if (devTokens.has(w1) || devTokens.has(w2)) continue;
+          const bigram = `${w1} ${w2}`;
+          bigramCounts[bigram] = (bigramCounts[bigram] || 0) + 1;
+        }
+      }
+
+      // Keep frequent bigrams (occurring at least twice) to extract dynamic high-value phrases
+      const sortedBigrams = Object.entries(bigramCounts)
+        .filter(([, count]) => count >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .map(([bigram]) => bigram);
+
+      sortedBigrams.slice(0, 15).forEach(b => bucket2.add(b));
+    }
+
+    // C) BUCKET 3: Whitelisted Brand Modifiers (e.g. whitelisted "kegel" + exercises)
+    const brandWordsInDesc = descWords.filter(w => brandPart.includes(w));
+    const brandModifiers = [
+      "exercises", "trainer", "tracker", "workout", "coach", "health", "app"
+    ];
+    for (const w of brandWordsInDesc) {
+      for (const mod of brandModifiers) {
+        if (w !== mod) {
+          bucket3.add(`${w} ${mod}`);
+        }
+      }
+    }
+
+    // D) BUCKET 4: Genre-specific high-value keywords (Fallback dictionary)
+    const genreKeywords: Record<string, string[]> = {
+      "health & fitness": [
+        "kegel exercises", "pelvic floor", "mens health", "prostate health",
+        "bladder control", "health coach", "fitness tracker", "calorie counter",
+        "daily workout", "weight loss", "gym workout", "stretching",
+      ],
+      "medical": [
+        "health tracker", "pill reminder", "symptom checker", "blood pressure",
+        "heart rate", "medical records", "first aid", "anatomy",
+      ],
+      "productivity": [
+        "habit tracker", "to do list", "task manager", "planner",
+        "calendar app", "focus timer", "pomodoro", "notes app",
+        "time tracker", "goal setting",
+      ],
+      "finance": [
+        "budget tracker", "expense tracker", "money manager", "personal finance",
+        "savings goal", "bill reminder", "investment tracker", "credit score",
+      ],
+      "education": [
+        "flashcards", "language learning", "study planner", "math solver",
+        "dictionary", "vocabulary", "online courses", "homework helper",
+      ],
+      "lifestyle": [
+        "meditation app", "mindfulness", "self care", "sleep tracker",
+        "daily journal", "breathing exercises", "yoga app", "habit tracker",
+      ],
+      "entertainment": [
+        "streaming app", "music player", "podcast app", "video player",
+        "movies", "tv shows", "radio app", "audiobooks",
+      ],
+      "photo & video": [
+        "photo editor", "video editor", "camera app", "photo filters",
+        "collage maker", "background remover", "retouch", "image editor",
+      ],
+      "social networking": [
+        "social media", "messaging app", "chat app", "video calls",
+        "meet people", "dating app", "community", "friends",
+      ],
+      "games": [
+        "puzzle game", "brain games", "word game", "strategy game",
+        "offline games", "multiplayer", "arcade game", "trivia",
+      ],
+      "travel": [
+        "trip planner", "flight tracker", "hotel booking", "navigation",
+        "travel guide", "maps app", "road trip", "translator",
+      ],
+      "utilities": [
+        "qr scanner", "calculator", "file manager", "vpn app",
+        "speed test", "flashlight", "compass", "unit converter",
+      ],
+      "shopping": [
+        "online shopping", "coupon app", "price tracker", "deals finder",
+        "grocery list", "wishlist", "fashion app", "discount codes",
+      ],
+      "business": [
+        "invoice maker", "project manager", "crm app", "meeting scheduler",
+        "document scanner", "business card", "networking app", "payroll",
+      ],
+    };
+
+    // Use primary genre + all extra genres from App Store details to look up seeds
+    const genresToCheck = new Set<string>();
+    if (app.primaryGenre) genresToCheck.add(app.primaryGenre.toLowerCase());
+    if (appDetails?.genres) {
+      appDetails.genres.forEach(g => genresToCheck.add(g.toLowerCase()));
+    }
+
+    for (const genreName of genresToCheck) {
+      for (const [key, terms] of Object.entries(genreKeywords)) {
+        if (genreName.includes(key) || key.includes(genreName)) {
+          terms.forEach((t) => bucket4.add(t));
+        }
+      }
+    }
+
+    // E) BUCKET 5: Generated Compound ASO Combinations (Pairwise modifiers & descWords)
+    const modifiers = [
+      "exercises", "trainer", "tracker", "app", "workout",
+      "coach", "health", "guide", "routine", "plan",
+    ];
+    for (const w of descWords) {
+      for (const mod of modifiers) {
+        if (w !== mod) {
+          bucket5.add(`${w} ${mod}`);
+        }
+      }
+    }
+    for (let i = 0; i < descWords.length; i++) {
+      for (let j = 0; j < descWords.length; j++) {
+        if (i !== j) {
+          bucket5.add(`${descWords[i]} ${descWords[j]}`);
+        }
+      }
+    }
+
+    // F) BUCKET 6: Standalone Descriptive Words
+    for (const w of descWords) {
+      bucket6.add(w);
+    }
+
+    // ── Step 4: Strict Priority-Preserving Deduplication & Merge ──────────────
+    const allCandidatesOrdered = new Set<string>();
+    const addToCandidates = (bucketSet: Set<string>) => {
+      for (let term of bucketSet) {
+        term = term.trim().toLowerCase();
+        if (brandTokensToExclude.has(term)) continue;
+        if (devTokens.has(term)) continue;
+        if (term.length < 3 || term.length > 35) continue;
+        const termWords = term.split(/\s+/);
+        if (termWords.length > 0 && termWords.every((w) => brandTokensToExclude.has(w) || devTokens.has(w))) continue;
+        allCandidatesOrdered.add(term);
+      }
+    };
+
+    addToCandidates(bucket1);
+    addToCandidates(bucket2);
+    addToCandidates(bucket3);
+    addToCandidates(bucket4);
+    addToCandidates(bucket5);
+    addToCandidates(bucket6);
+
+    // Slice the top 25 candidates for validation to protect Apple Search API rate limits
+    const termsToCheck = Array.from(allCandidatesOrdered).slice(0, 25);
+
+    // ── Step 5: Parallel Metric Compilation & Smart Selection ────────────────────
+    const results = await Promise.allSettled(
+      termsToCheck.map(async (term) => {
+        const metrics = await computeKeywordMetrics(app.appleId, term, app.country);
+        return { term, metrics };
+      })
+    );
+
+    // Collect terms matching ASO search volume criteria:
+    // popularity >= 20 OR (popularity >= 12 AND ranks in top 200)
+    const viable: { term: string; metrics: Awaited<ReturnType<typeof computeKeywordMetrics>> }[] = [];
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        const pop = r.value.metrics.popularity ?? 0;
+        const pos = r.value.metrics.position;
+        if (pop >= 20 || (pop >= 12 && pos !== null)) {
+          viable.push(r.value);
+        }
+      }
+    }
+
+    // Sort by: ranked keywords first (ascending position), then by popularity descending
+    viable.sort((a, b) => {
+      const posA = a.metrics.position;
+      const posB = b.metrics.position;
+      if (posA !== null && posB !== null) return posA - posB;
+      if (posA !== null) return -1;
+      if (posB !== null) return 1;
+      return (b.metrics.popularity ?? 0) - (a.metrics.popularity ?? 0);
     });
 
-  for (const seg of subtitleSegments) {
-    // Only add if it doesn't match a brand token exactly
-    if (!brandTokens.has(seg)) {
-      candidates.add(seg);
-    }
-  }
+    // Take top 20 highest-value keywords to expand coverage
+    const finalKeywords = viable.slice(0, 20);
 
-  // B) Individual descriptive words as standalone keywords
-  for (const w of descWords) {
-    candidates.add(w);
-  }
+    // ── Step 6: Persist Seeding to Database ─────────────────────────────────────────
+    await Promise.allSettled(
+      finalKeywords.map(async ({ term, metrics }) => {
+        try {
+          await prisma.appKeyword.create({
+            data: {
+              appId: app.id,
+              term,
+              popularity: metrics.popularity,
+              difficulty: metrics.difficulty,
+              difficultyLabel: metrics.difficultyLabel,
+              metricsUpdatedAt: new Date(),
+              snapshots: { create: { position: metrics.position } },
+            },
+          });
+        } catch (err) {
+          console.error(`Failed to seed keyword "${term}" for app ${app.id}:`, err);
+        }
+      })
+    );
 
-  // C) Compound keywords: descriptive words + common ASO modifiers
-  const modifiers = [
-    "exercises", "trainer", "tracker", "app", "workout",
-    "coach", "health", "guide", "routine", "plan",
-  ];
-  for (const w of descWords) {
-    for (const mod of modifiers) {
-      if (w !== mod) {
-        candidates.add(`${w} ${mod}`);
-      }
-    }
-  }
-
-  // D) Pair descriptive words together for compound terms
-  for (let i = 0; i < descWords.length; i++) {
-    for (let j = 0; j < descWords.length; j++) {
-      if (i !== j) {
-        candidates.add(`${descWords[i]} ${descWords[j]}`);
-      }
-    }
-  }
-
-  // ── Step 4: Genre-specific high-value keywords ──────────────────────────
-  const genre = (app.primaryGenre || "").toLowerCase();
-
-  const genreKeywords: Record<string, string[]> = {
-    "health & fitness": [
-      "kegel exercises", "pelvic floor", "mens health", "prostate health",
-      "bladder control", "health coach", "fitness tracker", "calorie counter",
-      "daily workout", "weight loss", "gym workout", "stretching",
-    ],
-    "medical": [
-      "health tracker", "pill reminder", "symptom checker", "blood pressure",
-      "heart rate", "medical records", "first aid", "anatomy",
-    ],
-    "productivity": [
-      "habit tracker", "to do list", "task manager", "planner",
-      "calendar app", "focus timer", "pomodoro", "notes app",
-      "time tracker", "goal setting",
-    ],
-    "finance": [
-      "budget tracker", "expense tracker", "money manager", "personal finance",
-      "savings goal", "bill reminder", "investment tracker", "credit score",
-    ],
-    "education": [
-      "flashcards", "language learning", "study planner", "math solver",
-      "dictionary", "vocabulary", "online courses", "homework helper",
-    ],
-    "lifestyle": [
-      "meditation app", "mindfulness", "self care", "sleep tracker",
-      "daily journal", "breathing exercises", "yoga app", "habit tracker",
-    ],
-    "entertainment": [
-      "streaming app", "music player", "podcast app", "video player",
-      "movies", "tv shows", "radio app", "audiobooks",
-    ],
-    "photo & video": [
-      "photo editor", "video editor", "camera app", "photo filters",
-      "collage maker", "background remover", "retouch", "image editor",
-    ],
-    "social networking": [
-      "social media", "messaging app", "chat app", "video calls",
-      "meet people", "dating app", "community", "friends",
-    ],
-    "games": [
-      "puzzle game", "brain games", "word game", "strategy game",
-      "offline games", "multiplayer", "arcade game", "trivia",
-    ],
-    "travel": [
-      "trip planner", "flight tracker", "hotel booking", "navigation",
-      "travel guide", "maps app", "road trip", "translator",
-    ],
-    "utilities": [
-      "qr scanner", "calculator", "file manager", "vpn app",
-      "speed test", "flashlight", "compass", "unit converter",
-    ],
-    "shopping": [
-      "online shopping", "coupon app", "price tracker", "deals finder",
-      "grocery list", "wishlist", "fashion app", "discount codes",
-    ],
-    "business": [
-      "invoice maker", "project manager", "crm app", "meeting scheduler",
-      "document scanner", "business card", "networking app", "payroll",
-    ],
-  };
-
-  // Match genre — use partial matching to handle "Health & Fitness" vs "health"
-  for (const [key, terms] of Object.entries(genreKeywords)) {
-    if (genre.includes(key) || key.includes(genre)) {
-      terms.forEach((t) => candidates.add(t));
-      break;
-    }
-  }
-
-  // ── Step 5: Filter and finalize ─────────────────────────────────────────
-  // Remove any candidate that is purely a brand name or developer name
-  const finalCandidates = Array.from(candidates).filter((term) => {
-    // Skip if the term is exactly the brand name
-    if (brandTokens.has(term)) return false;
-    // Skip if the term is exactly a dev name token
-    if (devTokens.has(term)) return false;
-    // Skip very short or very long terms
-    if (term.length < 3 || term.length > 35) return false;
-    // Skip if every word in the term is a brand token
-    const termWords = term.split(/\s+/);
-    if (termWords.length > 0 && termWords.every((w) => brandTokens.has(w))) return false;
-    return true;
-  });
-
-  // Limit to 20 candidates to avoid hitting Apple's rate limits
-  const termsToCheck = finalCandidates.slice(0, 20);
-
-  // ── Step 6: Resolve metrics in parallel, filter by popularity ───────────
-  const results = await Promise.allSettled(
-    termsToCheck.map(async (term) => {
-      const metrics = await computeKeywordMetrics(app.appleId, term, app.country);
-      return { term, metrics };
-    })
-  );
-
-  // Collect successful results with popularity >= 20 (real search volume)
-  const viable: { term: string; metrics: Awaited<ReturnType<typeof computeKeywordMetrics>> }[] = [];
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      const pop = r.value.metrics.popularity ?? 0;
-      if (pop >= 20) {
-        viable.push(r.value);
-      }
-    }
-  }
-
-  // Sort by: ranked keywords first (ascending position), then by popularity desc
-  viable.sort((a, b) => {
-    const posA = a.metrics.position;
-    const posB = b.metrics.position;
-    if (posA !== null && posB !== null) return posA - posB;
-    if (posA !== null) return -1;
-    if (posB !== null) return 1;
-    return (b.metrics.popularity ?? 0) - (a.metrics.popularity ?? 0);
-  });
-
-  // Take top 15 highest-value keywords
-  const finalKeywords = viable.slice(0, 15);
-
-  // ── Step 7: Persist to database ─────────────────────────────────────────
-  await Promise.allSettled(
-    finalKeywords.map(async ({ term, metrics }) => {
-      try {
-        await prisma.appKeyword.create({
-          data: {
-            appId: app.id,
-            term,
-            popularity: metrics.popularity,
-            difficulty: metrics.difficulty,
-            difficultyLabel: metrics.difficultyLabel,
-            metricsUpdatedAt: new Date(),
-            snapshots: { create: { position: metrics.position } },
-          },
-        });
-      } catch (err) {
-        console.error(`Failed to seed keyword "${term}" for app ${app.id}:`, err);
-      }
-    })
-  );
-
-  // 2. Update status to completed and revalidate paths
-  await prisma.trackedApp.update({
-    where: { id: appId },
-    data: { seedStatus: "completed" },
-  });
-  revalidatePath("/apps");
-  revalidatePath(`/apps/${appId}`);
+    // Revalidate and update status
+    await prisma.trackedApp.update({
+      where: { id: appId },
+      data: { seedStatus: "completed" },
+    });
+    revalidatePath("/apps");
+    revalidatePath(`/apps/${appId}`);
   } catch (err) {
     console.error(`Failed to seed keywords for app ${appId}:`, err);
     try {

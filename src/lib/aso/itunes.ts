@@ -25,6 +25,8 @@ export interface Competitor {
   formattedPrice?: string;
   trackViewUrl?: string;
   bundleId?: string;
+  description?: string;
+  genres?: string[];
 }
 
 /** Raw iTunes API result (fields are optional — Apple's shape varies). */
@@ -43,6 +45,8 @@ interface RawResult {
   formattedPrice?: string;
   trackViewUrl?: string;
   bundleId?: string;
+  description?: string;
+  genres?: string[];
 }
 
 interface ITunesResponse {
@@ -70,6 +74,8 @@ function normalize(r: RawResult): Competitor {
     formattedPrice: r.formattedPrice,
     trackViewUrl: r.trackViewUrl,
     bundleId: r.bundleId,
+    description: r.description,
+    genres: r.genres,
   };
 }
 
