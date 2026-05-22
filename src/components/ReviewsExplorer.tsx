@@ -10,10 +10,12 @@ import {
   Megaphone,
   Smartphone,
   MessageSquare,
+  Layers,
 } from "lucide-react";
 import { COUNTRIES, compact } from "@/lib/format";
 import type { Review, ReviewedApp, ReviewSummary } from "@/lib/aso/reviews";
 import type { AdLibraryLink } from "@/lib/aso/ads";
+import type { TrackedAppDTO } from "@/app/actions/apps";
 
 interface ReviewsResult {
   app: ReviewedApp;
@@ -32,7 +34,11 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "helpful", label: "Most helpful" },
 ];
 
-export default function ReviewsExplorer() {
+export default function ReviewsExplorer({
+  initialTrackedApps = [],
+}: {
+  initialTrackedApps?: TrackedAppDTO[];
+}) {
   const [input, setInput] = useState("");
   const [country, setCountry] = useState("us");
   const [loading, setLoading] = useState(false);
@@ -42,9 +48,18 @@ export default function ReviewsExplorer() {
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const abortRef = useRef<AbortController | null>(null);
 
+  async function loadApp(appleId: string, appCountry: string) {
+    setInput(appleId);
+    setCountry(appCountry);
+    await loadQuery(appleId, appCountry);
+  }
+
   async function load(e?: React.FormEvent) {
     e?.preventDefault();
-    const q = input.trim();
+    await loadQuery(input.trim(), country);
+  }
+
+  async function loadQuery(q: string, c: string) {
     if (!q) return;
 
     // Cancel any in-flight request so the user never waits on a stale result.
@@ -58,7 +73,7 @@ export default function ReviewsExplorer() {
       const res = await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: q, country }),
+        body: JSON.stringify({ input: q, country: c }),
         signal: controller.signal,
       });
       const data = await res.json();
@@ -139,6 +154,44 @@ export default function ReviewsExplorer() {
         </button>
       </form>
 
+      {/* Tracked apps quick-select */}
+      {initialTrackedApps.length > 0 && !result && !loading && (
+        <div className="mb-6 rounded-2xl border border-line bg-surface p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Layers size={14} className="text-lime" />
+            <span className="text-xs font-semibold text-white">Your tracked apps</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {initialTrackedApps.map((app) => (
+              <button
+                key={app.id}
+                onClick={() => loadApp(app.appleId, app.country)}
+                className="flex items-center gap-2 rounded-xl border border-line bg-surface-2/50 px-3 py-2 text-left transition-all duration-150 hover:border-lime/40 hover:bg-surface-2 active:scale-[0.98] cursor-pointer"
+              >
+                {app.iconUrl ? (
+                  <Image
+                    src={app.iconUrl}
+                    alt=""
+                    width={28}
+                    height={28}
+                    unoptimized
+                    className="h-7 w-7 shrink-0 rounded-lg border border-line/40"
+                  />
+                ) : (
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line/40 bg-surface-3">
+                    <Smartphone size={14} className="text-faint" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="max-w-[140px] truncate text-xs font-medium text-white">{app.name}</p>
+                  <p className="text-[10px] text-faint uppercase font-mono">{app.country}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
@@ -159,7 +212,12 @@ export default function ReviewsExplorer() {
         <div className={`space-y-6 transition-opacity duration-300 ${loading ? "opacity-50 pointer-events-none" : "animate-fade-in"}`}>
           <AppHeader app={result.app} />
           <AdLibraryRow ads={result.ads} appName={result.app.name} />
-          <SentimentPanel app={result.app} summary={result.summary} />
+          <SentimentPanel
+            app={result.app}
+            summary={result.summary}
+            activeFilter={ratingFilter}
+            onSelect={(n) => setRatingFilter(ratingFilter === n ? "all" : n)}
+          />
 
           {/* Filters */}
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -312,7 +370,17 @@ function AdLibraryRow({ ads, appName }: { ads: AdLibraryLink[]; appName: string 
   );
 }
 
-function SentimentPanel({ app, summary }: { app: ReviewedApp; summary: ReviewSummary }) {
+function SentimentPanel({
+  app,
+  summary,
+  activeFilter,
+  onSelect,
+}: {
+  app: ReviewedApp;
+  summary: ReviewSummary;
+  activeFilter: RatingFilter;
+  onSelect: (n: 1 | 2 | 3 | 4 | 5) => void;
+}) {
   const max = Math.max(1, ...([1, 2, 3, 4, 5] as const).map((n) => summary.distribution[n]));
   return (
     <section className="grid gap-5 rounded-2xl border border-line bg-surface p-5 sm:grid-cols-[160px_1fr]">
@@ -332,27 +400,58 @@ function SentimentPanel({ app, summary }: { app: ReviewedApp; summary: ReviewSum
         </p>
       </div>
 
-      {/* Distribution bars */}
-      <div className="flex flex-col justify-center gap-1.5">
+      {/* Distribution bars — each row is tappable to filter */}
+      <div className="flex flex-col justify-center gap-1">
         {([5, 4, 3, 2, 1] as const).map((n) => {
           const count = summary.distribution[n];
           const pct = summary.count ? Math.round((count / summary.count) * 100) : 0;
+          const isActive = activeFilter === n;
           return (
-            <div key={n} className="flex items-center gap-2.5 text-xs">
-              <span className="flex w-7 shrink-0 items-center gap-0.5 font-mono text-faint">
+            <button
+              key={n}
+              onClick={() => onSelect(n)}
+              className={[
+                "flex items-center gap-2.5 rounded-lg px-2 py-1 text-xs transition-all duration-150 cursor-pointer active:scale-[0.98]",
+                isActive
+                  ? "bg-lime/10 ring-1 ring-lime/30"
+                  : "hover:bg-surface-2/60",
+              ].join(" ")}
+            >
+              <span className={[
+                "flex w-7 shrink-0 items-center gap-0.5 font-mono",
+                isActive ? "text-lime font-semibold" : "text-faint",
+              ].join(" ")}>
                 {n}
-                <Star size={10} className="fill-amber-400 text-amber-400" />
+                <Star size={10} className={isActive ? "fill-lime text-lime" : "fill-amber-400 text-amber-400"} />
               </span>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-lime to-lime-dim transition-all duration-500"
+                  className={[
+                    "h-full rounded-full transition-all duration-500",
+                    isActive
+                      ? "bg-lime"
+                      : "bg-gradient-to-r from-lime/60 to-lime-dim/60",
+                  ].join(" ")}
                   style={{ width: `${(count / max) * 100}%` }}
                 />
               </div>
-              <span className="w-10 shrink-0 text-right font-mono tabular-nums text-muted">{pct}%</span>
-            </div>
+              <span className={[
+                "w-14 shrink-0 text-right font-mono tabular-nums",
+                isActive ? "text-lime font-semibold" : "text-muted",
+              ].join(" ")}>
+                {count > 0 ? `${pct}% (${count})` : "—"}
+              </span>
+            </button>
           );
         })}
+        {activeFilter !== "all" && (
+          <button
+            onClick={() => onSelect(activeFilter as 1 | 2 | 3 | 4 | 5)}
+            className="mt-1 text-[11px] text-lime/70 hover:text-lime transition-colors cursor-pointer text-right pr-2"
+          >
+            Clear filter ×
+          </button>
+        )}
       </div>
     </section>
   );
