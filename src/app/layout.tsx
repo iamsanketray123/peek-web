@@ -21,11 +21,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-ink font-sans text-white">
+      <body className="h-full bg-ink font-sans text-white">
         <TopLoader />
-        <div className="flex min-h-screen">
+        <div className="flex h-screen overflow-hidden">
           <Sidebar userEmail={user?.email ?? null} />
-          <main className="min-w-0 flex-1">{children}</main>
+          <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
         </div>
       </body>
     </html>

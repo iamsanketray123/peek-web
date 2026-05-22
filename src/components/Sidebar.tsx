@@ -65,7 +65,7 @@ export default function Sidebar({ userEmail }: { userEmail: string | null }) {
         <span className="text-lg font-semibold tracking-tight">peek</span>
       </div>
 
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-2">
+      <nav className="flex-1 space-y-6 px-3 py-2">
         {SECTIONS.map((section) => (
           <div key={section.title}>
             <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-widest text-faint">
