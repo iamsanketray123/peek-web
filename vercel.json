@@ -1,9 +1,4 @@
 {
-  "build": {
-    "env": {
-      "NEXT_ADAPTER_PATH": ""
-    }
-  },
   "crons": [
     {
       "path": "/api/cron/snapshots",
