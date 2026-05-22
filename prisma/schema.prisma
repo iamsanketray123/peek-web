@@ -28,3 +28,54 @@ model SavedKeyword {
   @@unique([userId, term, country])
   @@index([userId])
 }
+
+/// An App Store app a user is tracking (Phase 3 — App Tracking).
+model TrackedApp {
+  id           String       @id @default(cuid())
+  userId       String // Supabase auth.users.id
+  appleId      String // iTunes trackId
+  name         String
+  developer    String
+  iconUrl      String?
+  primaryGenre String?
+  country      String       @default("us")
+  ratingCount  Int          @default(0)
+  avgRating    Float        @default(0)
+  price        String?
+  releaseDate  String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  keywords     AppKeyword[]
+
+  @@unique([userId, appleId, country])
+  @@index([userId])
+}
+
+/// A keyword tracked for a specific app, with the latest computed metrics.
+model AppKeyword {
+  id               String         @id @default(cuid())
+  appId            String
+  app              TrackedApp     @relation(fields: [appId], references: [id], onDelete: Cascade)
+  term             String
+  popularity       Int?
+  difficulty       Int?
+  difficultyLabel  String?
+  metricsUpdatedAt DateTime?
+  createdAt        DateTime       @default(now())
+  snapshots        RankSnapshot[]
+
+  @@unique([appId, term])
+  @@index([appId])
+}
+
+/// A point-in-time rank of an app for one of its tracked keywords.
+/// position is null when the app isn't found in the search results (not ranked).
+model RankSnapshot {
+  id           String     @id @default(cuid())
+  appKeywordId String
+  appKeyword   AppKeyword @relation(fields: [appKeywordId], references: [id], onDelete: Cascade)
+  position     Int? // 1-based rank; null = not ranked
+  checkedAt    DateTime   @default(now())
+
+  @@index([appKeywordId, checkedAt])
+}

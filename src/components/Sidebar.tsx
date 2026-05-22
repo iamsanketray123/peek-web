@@ -41,7 +41,7 @@ const SECTIONS: NavSection[] = [
     title: "ASO",
     items: [
       { label: "Keyword Explorer", href: "/", icon: Search, ready: true },
-      { label: "App Tracking", href: "/soon", icon: Smartphone },
+      { label: "App Tracking", href: "/apps", icon: Smartphone, ready: true },
     ],
   },
   {
@@ -73,7 +73,11 @@ export default function Sidebar({ userEmail }: { userEmail: string | null }) {
             </p>
             <ul className="space-y-0.5">
               {section.items.map((item) => {
-                const active = item.ready && pathname === item.href;
+                const active =
+                  item.ready &&
+                  (item.href === "/"
+                    ? pathname === "/"
+                    : pathname === item.href || pathname.startsWith(item.href + "/"));
                 const Icon = item.icon;
                 return (
                   <li key={item.label}>
