@@ -123,7 +123,7 @@ Port `respectaso/aso/scoring.py` + the estimator classes from `services.py` to T
 - [ ] Tracked Keywords: save/list/delete keywords (persisted per user) *(needs DB — Phase 2)*
 - [ ] Similar keywords suggestions (from competitor titles / iTunes term variants)
 - [x] Difficulty tiers display (Top 5 / 10 / 20)
-- [ ] **Deploy & smoke-test Keyword Explorer on Vercel**
+- [x] **Deploy & smoke-test Keyword Explorer on Vercel** — https://peek-web-iota.vercel.app
 - [ ] Unit tests for scoring parity vs respectaso *(see §4)*
 - [ ] Port the finance-intent relevance guard + verify difficulty post-processing caps against respectaso (v1 approximations)
 
@@ -187,3 +187,9 @@ Port `respectaso/aso/scoring.py` + the estimator classes from `services.py` to T
   - **Verified end-to-end:** `npm run build` passes; tsc + eslint clean. `"kegel trainer"` US → pop 76 / diff 56 (Hard) / opp 47 / Moderate, with 10 real ranked apps + per-position download estimates. Note: our estimates differ from appkittie's paid-data numbers (expected).
   - **Known gaps / next:** not committed to git or deployed to Vercel; no DB yet so Tracked Keywords/accounts not persisted (Phase 2); similar-keywords suggestions, scoring parity tests, finance-intent guard still TODO.
   - **Run locally:** `cd ~/Documents/peek-web && npm run dev` (was on :3001 — port 3000 occupied).
+- **2026-05-22 (build #2)** — Committed, pushed to GitHub (`iamsanketray123/peek-web`), deployed to Vercel.
+  - Production URL: **https://peek-web-iota.vercel.app**
+  - Inspect: https://vercel.com/iamsanketray123s-projects/peek-web
+  - Smoke-tested live: "habit tracker" → pop 95 / diff 77 (Very Hard) / High Competition ✅
+  - GitHub repo: https://github.com/iamsanketray123/peek-web
+  - GitHub↔Vercel auto-deploy not wired yet (token scope missing). Push to GitHub then run `vercel --prod --yes` manually, OR connect the GitHub integration from the Vercel dashboard.
