@@ -50,7 +50,9 @@ interface ITunesResponse {
   results: RawResult[];
 }
 
-const CACHE_SECONDS = 60 * 60 * 6; // 6h — popularity/difficulty don't change minute-to-minute
+// 30 min: short enough that stale iTunes orderings don't persist across user sessions,
+// long enough to avoid hammering Apple's API on repeated same-keyword lookups.
+const CACHE_SECONDS = 60 * 30;
 
 function normalize(r: RawResult): Competitor {
   return {
@@ -92,11 +94,16 @@ async function fetchJson(url: string): Promise<ITunesResponse> {
   return (await res.json()) as ITunesResponse;
 }
 
-/** Search apps for a keyword, ranked as Apple returns them. */
+/**
+ * Search apps for a keyword.
+ * NOTE: iTunes Search API does NOT return results in App Store search-rank order —
+ * its ordering is internal to Apple and varies between calls. Callers that need
+ * a stable display order should re-sort by ratingCount or another metric.
+ */
 export async function searchApps(
   term: string,
   country = "us",
-  limit = 20,
+  limit = 50,
 ): Promise<Competitor[]> {
   const url =
     "https://itunes.apple.com/search?" +
