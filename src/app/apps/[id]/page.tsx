@@ -14,7 +14,7 @@ export default async function AppDetailPage({
   if (!data) notFound();
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
+    <div className="mx-auto max-w-5xl px-6 py-8 animate-slide-up">
       <Link
         href="/apps"
         className="mb-6 inline-flex lg:hidden items-center gap-2 text-sm text-muted hover:text-white transition-colors duration-150 active:scale-[0.98]"

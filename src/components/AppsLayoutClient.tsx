@@ -34,6 +34,11 @@ export default function AppsLayoutClient({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+
+  // Auto-clear navigatingTo when navigation completes (pathname matched)
+  const effectiveNavigatingTo =
+    navigatingTo && pathname !== `/apps/${navigatingTo}` ? navigatingTo : null;
 
   // Client-side redirect on desktop if we are on index "/apps" and have apps
   useEffect(() => {
@@ -85,6 +90,12 @@ export default function AppsLayoutClient({
         setRemovingId(null);
       }
     });
+  }
+
+  function handleAppClick(appId: string) {
+    if (pathname !== `/apps/${appId}`) {
+      setNavigatingTo(appId);
+    }
   }
 
   return (
@@ -139,12 +150,14 @@ export default function AppsLayoutClient({
           ) : (
             filteredApps.map((app) => {
               const isActive = pathname === `/apps/${app.id}`;
+              const isNavigating = effectiveNavigatingTo === app.id;
               return (
                 <Link
                   key={app.id}
                   href={`/apps/${app.id}`}
-                  className={`group relative flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all duration-200 ${
-                    isActive
+                  onClick={() => handleAppClick(app.id)}
+                  className={`group relative flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all duration-150 ${
+                    isActive || isNavigating
                       ? "border-lime/30 bg-lime/5 before:absolute before:left-0 before:top-[12%] before:bottom-[12%] before:w-[3px] before:rounded-r before:bg-lime"
                       : "border-transparent bg-transparent hover:bg-surface-2/30 hover:border-line/40"
                   }`}
@@ -166,8 +179,8 @@ export default function AppsLayoutClient({
 
                   <div className="min-w-0 flex-1">
                     <p
-                      className={`truncate text-xs font-semibold transition-colors duration-200 ${
-                        isActive ? "text-lime" : "text-white group-hover:text-lime"
+                      className={`truncate text-xs font-semibold transition-colors duration-150 ${
+                        isActive || isNavigating ? "text-lime" : "text-white group-hover:text-lime"
                       }`}
                     >
                       {app.name}

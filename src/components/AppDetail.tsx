@@ -76,11 +76,15 @@ export default function AppDetail({
 
   function handleRemove(id: string) {
     setRemovingId(id);
+    // Optimistic: remove from UI immediately
+    const prev = keywords;
+    setKeywords((kws) => kws.filter((k) => k.id !== id));
     startAdd(async () => {
       try {
         await removeAppKeyword(id);
-        setKeywords((prev) => prev.filter((k) => k.id !== id));
       } catch (err) {
+        // Rollback on failure
+        setKeywords(prev);
         setError((err as Error).message);
       } finally {
         setRemovingId(null);

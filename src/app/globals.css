@@ -17,6 +17,9 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-slide-up: slide-up 0.25s ease-out;
 }
 
 html {
@@ -26,6 +29,17 @@ html {
 body {
   background: var(--color-ink);
   color: #ededed;
+}
+
+/* Page transition animations */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Thin dark scrollbars to match the theme */
@@ -41,3 +55,4 @@ body {
   background: var(--color-line);
   border-radius: 9999px;
 }
+
