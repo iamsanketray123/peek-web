@@ -59,6 +59,15 @@ export default function AppDetail({
   // Global storefront localization state
   const [activeGlobalTerm, setActiveGlobalTerm] = useState<string | null>(null);
 
+  // Synchronize component state with fresh server props when layout/sidebar refreshes
+  useEffect(() => {
+    setCurrentApp(app);
+  }, [app]);
+
+  useEffect(() => {
+    setKeywords(initialKeywords);
+  }, [initialKeywords]);
+
   // Active polling: check status every 2 seconds if app is seeding in the background
   useEffect(() => {
     const isSeeding = currentApp.seedStatus === "pending" || currentApp.seedStatus === "seeding";
@@ -137,7 +146,10 @@ export default function AppDetail({
       try {
         await refreshAppRanks(currentApp.id);
         const fresh = await getTrackedApp(currentApp.id);
-        if (fresh) setKeywords(fresh.keywords);
+        if (fresh) {
+          setCurrentApp(fresh.app);
+          setKeywords(fresh.keywords);
+        }
       } catch (err) {
         setError((err as Error).message);
       }
