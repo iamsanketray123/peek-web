@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Search, Loader2, ExternalLink, X, Star, Trash2, Bookmark } from "lucide-react";
+import { Search, Loader2, ExternalLink, X, Star, Trash2, Bookmark, CheckCircle2 } from "lucide-react";
 import type { KeywordAnalysis, RankedApp } from "@/lib/aso/analyze";
 import { MetricBar } from "@/components/MetricBar";
 import { compact, dlRange, COUNTRIES } from "@/lib/format";
@@ -38,6 +38,12 @@ export default function KeywordExplorer({
   const [modalApps, setModalApps] = useState<RankedApp[] | null>(null);
   const [saved, setSaved] = useState<SavedKeywordDTO[]>(initialSaved);
   const [savingState, setSavingState] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 2500);
+  }
 
   const currentSaved =
     result != null &&
@@ -83,6 +89,7 @@ export default function KeywordExplorer({
       if (currentSaved) {
         await removeSavedKeyword(currentSaved.id);
         setSaved((prev) => prev.filter((s) => s.id !== currentSaved.id));
+        showToast("Keyword removed");
       } else {
         const rec = await saveKeyword({
           term: result.keyword,
@@ -93,20 +100,23 @@ export default function KeywordExplorer({
           classification: result.targeting.label,
         });
         setSaved((prev) => [rec, ...prev.filter((s) => s.id !== rec.id)]);
+        showToast("Keyword saved!");
       }
     } catch (err) {
-      setError((err as Error).message);
+      showToast((err as Error).message, false);
     } finally {
       setSavingState(false);
     }
   }
 
   async function removeOne(id: string) {
+    const prev = saved;
+    setSaved((s) => s.filter((k) => k.id !== id)); // optimistic
     try {
       await removeSavedKeyword(id);
-      setSaved((prev) => prev.filter((s) => s.id !== id));
     } catch (err) {
-      setError((err as Error).message);
+      setSaved(prev); // rollback
+      showToast((err as Error).message, false);
     }
   }
 
@@ -229,15 +239,27 @@ export default function KeywordExplorer({
             </div>
           )}
 
-          {loading ? (
-            <KeywordSkeleton />
-          ) : !result && !error ? (
+          {/* First-time skeleton: loading with no prior result */}
+          {loading && !result && <KeywordSkeleton />}
+
+          {/* Re-search banner: loading over an existing result */}
+          {loading && result && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-lime/20 bg-lime/5 px-3 py-2 text-xs text-lime animate-fade-in">
+              <Loader2 size={13} className="animate-spin" />
+              Re-analyzing &ldquo;{keyword}&rdquo;…
+            </div>
+          )}
+
+          {!result && !error && !loading && (
             <div className="rounded-xl border border-dashed border-line bg-surface/40 px-6 py-16 text-center text-muted">
               <Search size={28} className="mx-auto mb-3 text-faint" />
-              <p className="text-sm">Search a keyword to see its ASO metrics and the apps ranking for it.</p>
+              <p className="text-sm font-medium text-white mb-1">Search any App Store keyword</p>
+              <p className="text-sm">See popularity, difficulty, opportunity, and the top ranking apps.</p>
             </div>
-          ) : result ? (
-            <div className="space-y-6">
+          )}
+
+          {result ? (
+            <div className={`space-y-6 transition-opacity duration-300 ${loading ? "opacity-50 pointer-events-none" : "animate-fade-in"}`}>
               {/* Save bar */}
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-medium text-white">
@@ -352,6 +374,21 @@ export default function KeywordExplorer({
       {modalApps && (
         <AppsModal keyword={result?.keyword ?? ""} apps={modalApps} onClose={() => setModalApps(null)} />
       )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className={[
+            "fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-xl border px-4 py-2.5 text-sm font-medium shadow-xl animate-slide-up",
+            toast.ok
+              ? "border-lime/30 bg-surface text-lime"
+              : "border-red-500/30 bg-surface text-red-300",
+          ].join(" ")}
+        >
+          {toast.ok ? <CheckCircle2 size={15} /> : <X size={15} />}
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }
@@ -401,9 +438,9 @@ function AppRow({ app }: { app: RankedApp }) {
 
 function AppsModal({ keyword, apps, onClose }: { keyword: string; apps: RankedApp[]; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
       <div
-        className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-surface"
+        className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-surface animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-4">

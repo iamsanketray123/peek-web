@@ -259,9 +259,9 @@ export default function AppsLayoutClient({
 
       {/* ── ADD APP OVERLAY MODAL ─────────────────────────────────────────── */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
           {/* Modal Card */}
-          <div className="relative max-w-md w-full rounded-2xl border border-line bg-surface p-6 shadow-2xl transition-all duration-300 border-lime/10">
+          <div className="relative max-w-md w-full rounded-2xl border border-line bg-surface p-6 shadow-2xl border-lime/10 animate-scale-in">
             {/* Close Button */}
             <button
               onClick={() => {
