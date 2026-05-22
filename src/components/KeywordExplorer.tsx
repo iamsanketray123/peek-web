@@ -37,7 +37,6 @@ export default function KeywordExplorer({
   const [result, setResult] = useState<KeywordAnalysis | null>(null);
   const [modalApps, setModalApps] = useState<RankedApp[] | null>(null);
   const [saved, setSaved] = useState<SavedKeywordDTO[]>(initialSaved);
-  const [savingState, setSavingState] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -45,10 +44,6 @@ export default function KeywordExplorer({
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 2500);
   }
-
-  const currentSaved =
-    result != null &&
-    saved.find((s) => s.term === result.keyword.toLowerCase() && s.country === result.country);
 
   async function analyze(term: string, ctry: string) {
     const q = term.trim();
@@ -70,7 +65,30 @@ export default function KeywordExplorer({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
-      setResult(data as KeywordAnalysis);
+      const analysis = data as KeywordAnalysis;
+      setResult(analysis);
+
+      // Auto-save if authed and not already in the list
+      if (isAuthed) {
+        const alreadySaved = saved.find(
+          (s) => s.term === analysis.keyword.toLowerCase() && s.country === analysis.country
+        );
+        if (!alreadySaved) {
+          try {
+            const rec = await saveKeyword({
+              term: analysis.keyword,
+              country: analysis.country,
+              popularity: analysis.popularity,
+              difficulty: analysis.difficulty,
+              opportunity: analysis.opportunity,
+              classification: analysis.targeting.label,
+            });
+            setSaved((prev) => [rec, ...prev.filter((s) => s.id !== rec.id)]);
+          } catch {
+            // silently ignore — search result is still shown
+          }
+        }
+      }
     } catch (err) {
       if ((err as Error).name === "AbortError") return; // silently cancelled — do not update state
       setError((err as Error).message);
@@ -90,33 +108,6 @@ export default function KeywordExplorer({
     setKeyword(s.term);
     setCountry(s.country);
     await analyze(s.term, s.country);
-  }
-
-  async function toggleSave() {
-    if (!result || savingState) return;
-    setSavingState(true);
-    try {
-      if (currentSaved) {
-        await removeSavedKeyword(currentSaved.id);
-        setSaved((prev) => prev.filter((s) => s.id !== currentSaved.id));
-        showToast("Keyword removed");
-      } else {
-        const rec = await saveKeyword({
-          term: result.keyword,
-          country: result.country,
-          popularity: result.popularity,
-          difficulty: result.difficulty,
-          opportunity: result.opportunity,
-          classification: result.targeting.label,
-        });
-        setSaved((prev) => [rec, ...prev.filter((s) => s.id !== rec.id)]);
-        showToast("Keyword saved!");
-      }
-    } catch (err) {
-      showToast((err as Error).message, false);
-    } finally {
-      setSavingState(false);
-    }
   }
 
   async function removeOne(id: string) {
@@ -269,37 +260,10 @@ export default function KeywordExplorer({
 
           {result ? (
             <div className={`space-y-6 transition-opacity duration-300 ${loading ? "opacity-50 pointer-events-none" : "animate-fade-in"}`}>
-              {/* Save bar */}
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-medium text-white">
-                  <span className="text-lime">&ldquo;{result.keyword}&rdquo;</span>
-                </h2>
-                {isAuthed ? (
-                  <button
-                    onClick={toggleSave}
-                    disabled={savingState}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition duration-200 active:scale-[0.96] disabled:opacity-50 cursor-pointer ${
-                      currentSaved
-                        ? "border-lime/40 bg-lime/10 text-lime hover:bg-lime/20"
-                        : "border-line bg-surface text-muted hover:text-white hover:bg-surface-2"
-                    }`}
-                  >
-                    {savingState ? (
-                      <Loader2 size={15} className="animate-spin text-lime" />
-                    ) : (
-                      <Star size={15} className={currentSaved ? "fill-lime text-lime" : ""} />
-                    )}
-                    {currentSaved ? "Saved" : "Save"}
-                  </button>
-                ) : (
-                  <Link
-                    href="/login"
-                    className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-muted hover:text-white hover:bg-surface-2 transition duration-200 active:scale-[0.96] cursor-pointer"
-                  >
-                    <Star size={15} /> Save
-                  </Link>
-                )}
-              </div>
+              {/* Result heading */}
+              <h2 className="text-lg font-medium text-white">
+                <span className="text-lime">&ldquo;{result.keyword}&rdquo;</span>
+              </h2>
 
               {/* Summary metrics */}
               <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
