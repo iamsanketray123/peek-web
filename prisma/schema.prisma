@@ -46,6 +46,7 @@ model TrackedApp {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   keywords     AppKeyword[]
+  seedStatus   String       @default("pending") // "pending" | "seeding" | "completed" | "error"
 
   @@unique([userId, appleId, country])
   @@index([userId])

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUser } from "@/lib/supabase/server";
 import { lookupApp, searchApps, extractAppleId } from "@/lib/aso/itunes";
@@ -22,6 +23,7 @@ export interface TrackedAppDTO {
   releaseDate: string | null;
   keywordCount: number;
   createdAt: string;
+  seedStatus: string;
 }
 
 export interface RankPointDTO {
@@ -62,6 +64,7 @@ function appToDTO(a: {
   price: string | null;
   releaseDate: string | null;
   createdAt: Date;
+  seedStatus: string;
   _count?: { keywords: number };
 }): TrackedAppDTO {
   return {
@@ -78,6 +81,7 @@ function appToDTO(a: {
     releaseDate: a.releaseDate,
     keywordCount: a._count?.keywords ?? 0,
     createdAt: a.createdAt.toISOString(),
+    seedStatus: a.seedStatus,
   };
 }
 
@@ -94,11 +98,31 @@ function appToDTO(a: {
  *  5. Never add the developer's personal/company name as a keyword.
  */
 async function seedKeywordsForApp(appId: string): Promise<void> {
-  const app = await prisma.trackedApp.findUnique({
-    where: { id: appId },
-    include: { keywords: true },
-  });
-  if (!app || app.keywords.length > 0) return;
+  try {
+    // 1. Update status to seeding
+    await prisma.trackedApp.update({
+      where: { id: appId },
+      data: { seedStatus: "seeding" },
+    });
+
+    const app = await prisma.trackedApp.findUnique({
+      where: { id: appId },
+      include: { keywords: true },
+    });
+    if (!app) {
+      await prisma.trackedApp.update({
+        where: { id: appId },
+        data: { seedStatus: "error" },
+      });
+      return;
+    }
+    if (app.keywords.length > 0) {
+      await prisma.trackedApp.update({
+        where: { id: appId },
+        data: { seedStatus: "completed" },
+      });
+      return;
+    }
 
   // ── Step 1: Separate brand from descriptive subtitle ────────────────────
   // App names often follow: "BrandName: Descriptive Subtitle"
@@ -342,6 +366,27 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
       }
     })
   );
+
+  // 2. Update status to completed and revalidate paths
+  await prisma.trackedApp.update({
+    where: { id: appId },
+    data: { seedStatus: "completed" },
+  });
+  revalidatePath("/apps");
+  revalidatePath(`/apps/${appId}`);
+  } catch (err) {
+    console.error(`Failed to seed keywords for app ${appId}:`, err);
+    try {
+      await prisma.trackedApp.update({
+        where: { id: appId },
+        data: { seedStatus: "error" },
+      });
+      revalidatePath("/apps");
+      revalidatePath(`/apps/${appId}`);
+    } catch (e) {
+      console.error(`Failed to mark app ${appId} as error:`, e);
+    }
+  }
 }
 
 // ── App CRUD ──────────────────────────────────────────────────────────────
@@ -398,7 +443,13 @@ export async function addTrackedApp(input: {
 
   // Seed keywords if this is a newly created app tracking list
   if (rec._count.keywords === 0) {
-    await seedKeywordsForApp(rec.id);
+    after(async () => {
+      try {
+        await seedKeywordsForApp(rec.id);
+      } catch (err) {
+        console.error("Background seeding failed:", err);
+      }
+    });
   }
 
   revalidatePath("/apps");

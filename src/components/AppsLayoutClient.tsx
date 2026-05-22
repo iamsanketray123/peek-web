@@ -50,6 +50,20 @@ export default function AppsLayoutClient({
     }
   }, [pathname, initialApps, router]);
 
+  // Global polling: refresh apps list if any app is still seeding in the background
+  useEffect(() => {
+    const isSeeding = initialApps.some(
+      (app) => app.seedStatus === "pending" || app.seedStatus === "seeding"
+    );
+    if (!isSeeding) return;
+
+    const interval = setInterval(() => {
+      router.refresh();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [initialApps, router]);
+
   const filteredApps = initialApps.filter((app) =>
     app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     app.developer.toLowerCase().includes(searchTerm.toLowerCase())
@@ -197,9 +211,20 @@ export default function AppsLayoutClient({
                         </span>
                       </span>
                       <span>•</span>
-                      <span>
-                        {app.keywordCount} kw{app.keywordCount === 1 ? "" : "s"}
-                      </span>
+                      {app.seedStatus === "error" ? (
+                        <span className="text-[10px] font-medium text-red-400">
+                          Error seeding
+                        </span>
+                      ) : app.seedStatus === "pending" || app.seedStatus === "seeding" ? (
+                        <span className="flex items-center gap-1 text-[10px] font-medium text-lime animate-pulse">
+                          <Loader2 size={10} className="animate-spin text-lime" />
+                          <span>Analyzing...</span>
+                        </span>
+                      ) : (
+                        <span>
+                          {app.keywordCount} kw{app.keywordCount === 1 ? "" : "s"}
+                        </span>
+                      )}
                     </div>
                   </div>
 

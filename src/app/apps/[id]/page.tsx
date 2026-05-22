@@ -21,7 +21,7 @@ export default async function AppDetailPage({
       >
         <ArrowLeft size={15} /> Back to all apps
       </Link>
-      <AppDetail app={data.app} initialKeywords={data.keywords} />
+      <AppDetail key={data.app.id} app={data.app} initialKeywords={data.keywords} />
     </div>
   );
 }
