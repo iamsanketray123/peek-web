@@ -329,7 +329,7 @@ export default function KeywordExplorer({
                   <p className="px-5 py-8 text-center text-sm text-muted">No ranking apps found.</p>
                 ) : (
                   <ul className="divide-y divide-line">
-                    {result.apps.map((app) => (
+                    {result.apps.slice(0, 10).map((app) => (
                       <AppRow key={app.trackId} app={app} />
                     ))}
                   </ul>
@@ -337,7 +337,7 @@ export default function KeywordExplorer({
               </section>
 
               <p className="pb-4 text-center text-xs text-faint">
-                Apps sorted by rating count. All metrics are estimates from the public iTunes Search API.
+                Apps sorted by search rank. All metrics are estimates from the public iTunes Search API.
               </p>
             </div>
           ) : null}

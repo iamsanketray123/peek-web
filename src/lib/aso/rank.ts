@@ -39,7 +39,8 @@ export async function computeKeywordMetrics(
   appleId: string | number,
   term: string,
   country = "us",
-): Promise<KeywordMetrics> {
+  competitorAppleIds?: string[],
+): Promise<KeywordMetrics & { competitorPositions?: Record<string, number | null> }> {
   const results: Competitor[] = await searchApps(term, country, RANK_DEPTH);
 
   const idNum = Number(appleId);
@@ -51,12 +52,22 @@ export async function computeKeywordMetrics(
   const popularity = estimatePopularity(top, term);
   const diff = calcDifficulty(top, term);
 
+  const competitorPositions: Record<string, number | null> = {};
+  if (competitorAppleIds) {
+    for (const cId of competitorAppleIds) {
+      const cNum = Number(cId);
+      const cIdx = results.findIndex((c) => c.trackId === cNum);
+      competitorPositions[cId] = cIdx === -1 ? null : cIdx + 1;
+    }
+  }
+
   return {
     popularity,
     difficulty: diff.score,
     difficultyLabel: diff.label,
     position,
     resultCount: results.length,
+    competitorPositions,
   };
 }
 

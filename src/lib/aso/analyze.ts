@@ -57,16 +57,10 @@ export async function analyzeKeyword(term: string, country = "us"): Promise<Keyw
   const targeting = getTargeting(popularity ?? 0, diff.score);
   const downloads = estimateDownloads(popularity ?? 0, country);
 
-  // For display: sort by ratingCount descending so the strongest, most
-  // established apps always appear at the top — regardless of iTunes'
-  // non-deterministic internal ordering. This ensures that high-profile
-  // apps (e.g. Dr. Kegel with 40K ratings) are never hidden by lower-rated
-  // apps that happened to land higher in a particular iTunes API response.
-  const sortedForDisplay = [...competitors]
-    .sort((a, b) => (b.userRatingCount || 0) - (a.userRatingCount || 0))
-    .slice(0, 10);
-
-  const apps: RankedApp[] = sortedForDisplay.map((c, i) => {
+  // For display: map competitors in their actual search rank order (as returned by Apple Search).
+  // This ensures that the Keyword Explorer displays actual search engine result ranking (Rank #1, #2, #3...).
+  // We map all parsed competitors (up to 50) so the user can inspect the full search result list.
+  const apps: RankedApp[] = competitors.map((c, i) => {
     const pos = downloads.positions[i];
     return {
       rank: i + 1,

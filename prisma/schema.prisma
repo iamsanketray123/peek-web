@@ -46,10 +46,27 @@ model TrackedApp {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   keywords     AppKeyword[]
+  competitors  CompetitorApp[]
   seedStatus   String       @default("pending") // "pending" | "seeding" | "completed" | "error"
 
   @@unique([userId, appleId, country])
   @@index([userId])
+}
+
+/// A competitor app associated with a tracked workspace app.
+model CompetitorApp {
+  id           String     @id @default(cuid())
+  trackedAppId String
+  trackedApp   TrackedApp @relation(fields: [trackedAppId], references: [id], onDelete: Cascade)
+  appleId      String
+  name         String
+  developer    String
+  iconUrl      String?
+  createdAt    DateTime   @default(now())
+  snapshots    CompetitorRankSnapshot[]
+
+  @@unique([trackedAppId, appleId])
+  @@index([trackedAppId])
 }
 
 /// A keyword tracked for a specific app, with the latest computed metrics.
@@ -62,8 +79,9 @@ model AppKeyword {
   difficulty       Int?
   difficultyLabel  String?
   metricsUpdatedAt DateTime?
-  createdAt        DateTime       @default(now())
-  snapshots        RankSnapshot[]
+  createdAt    DateTime       @default(now())
+  snapshots    RankSnapshot[]
+  competitorSnapshots CompetitorRankSnapshot[]
 
   @@unique([appId, term])
   @@index([appId])
@@ -78,5 +96,19 @@ model RankSnapshot {
   position     Int? // 1-based rank; null = not ranked
   checkedAt    DateTime   @default(now())
 
+  @@index([appKeywordId, checkedAt])
+}
+
+/// A point-in-time rank of a competitor app for one of the main app's tracked keywords.
+model CompetitorRankSnapshot {
+  id              String        @id @default(cuid())
+  competitorId    String
+  competitor      CompetitorApp @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  appKeywordId    String
+  appKeyword      AppKeyword    @relation(fields: [appKeywordId], references: [id], onDelete: Cascade)
+  position        Int? // 1-based rank; null = not ranked
+  checkedAt       DateTime      @default(now())
+
+  @@index([competitorId, checkedAt])
   @@index([appKeywordId, checkedAt])
 }

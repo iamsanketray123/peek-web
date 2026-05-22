@@ -14,12 +14,17 @@ import {
   Minus,
   ExternalLink,
   Star,
+  Globe,
 } from "lucide-react";
+import GlobalMatrixModal from "@/components/GlobalMatrixModal";
+import MetadataOptimizer from "@/components/MetadataOptimizer";
 import {
   addAppKeyword,
   removeAppKeyword,
   refreshAppRanks,
   getTrackedApp,
+  addCompetitorApp,
+  removeCompetitorApp,
   type TrackedAppDTO,
   type AppKeywordDTO,
 } from "@/app/actions/apps";
@@ -27,7 +32,7 @@ import { MetricBar } from "@/components/MetricBar";
 import { compact } from "@/lib/format";
 import RankChart from "@/components/RankChart";
 
-type Tab = "keywords" | "history";
+type Tab = "keywords" | "history" | "optimizer";
 
 export default function AppDetail({
   app,
@@ -45,6 +50,14 @@ export default function AppDetail({
   const [adding, startAdd] = useTransition();
   const [refreshing, startRefresh] = useTransition();
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  // Competitor tracking state
+  const [isAddingCompetitor, setIsAddingCompetitor] = useState(false);
+  const [competitorQuery, setCompetitorQuery] = useState("");
+  const [addingComp, startAddComp] = useTransition();
+
+  // Global storefront localization state
+  const [activeGlobalTerm, setActiveGlobalTerm] = useState<string | null>(null);
 
   // Active polling: check status every 2 seconds if app is seeding in the background
   useEffect(() => {
@@ -126,6 +139,67 @@ export default function AppDetail({
         const fresh = await getTrackedApp(currentApp.id);
         if (fresh) setKeywords(fresh.keywords);
       } catch (err) {
+        setError((err as Error).message);
+      }
+    });
+  }
+
+  function handleAddCompetitor(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const q = competitorQuery.trim();
+    if (!q) return;
+    startAddComp(async () => {
+      try {
+        const comp = await addCompetitorApp(currentApp.id, q);
+        setCurrentApp((prev) => ({
+          ...prev,
+          competitors: [...(prev.competitors || []), comp],
+        }));
+        setIsAddingCompetitor(false);
+        setCompetitorQuery("");
+        
+        // Refetch keywords to populate competitor positions immediately
+        const fresh = await getTrackedApp(currentApp.id);
+        if (fresh) {
+          setKeywords(fresh.keywords);
+        }
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    });
+  }
+
+  function handleRemoveCompetitor(compId: string) {
+    setError(null);
+    const prevCompetitors = currentApp.competitors || [];
+    setCurrentApp((prev) => ({
+      ...prev,
+      competitors: prev.competitors?.filter((c) => c.id !== compId) || [],
+    }));
+
+    startAddComp(async () => {
+      try {
+        await removeCompetitorApp(compId);
+        // Clean up competitor positions from keywords locally
+        setKeywords((kws) =>
+          kws.map((k) => {
+            const nextPositions = { ...k.competitorPositions };
+            const comp = prevCompetitors.find((c) => c.id === compId);
+            if (comp) {
+              delete nextPositions[comp.appleId];
+            }
+            return {
+              ...k,
+              competitorPositions: nextPositions,
+            };
+          })
+        );
+      } catch (err) {
+        setCurrentApp((prev) => ({
+          ...prev,
+          competitors: prevCompetitors,
+        }));
         setError((err as Error).message);
       }
     });
@@ -264,9 +338,98 @@ export default function AppDetail({
         </div>
       ) : (
         <>
+          {/* Competitor section */}
+          <div className="mb-6 rounded-2xl border border-line bg-surface/20 p-4 backdrop-blur-sm shadow-[0_4px_30px_rgba(0,0,0,0.2)] animate-fade-in">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-faint">Competitors ({currentApp.competitors?.length ?? 0}/5)</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {currentApp.competitors?.map((comp) => (
+                    <div
+                      key={comp.id}
+                      className="group relative flex items-center gap-2 rounded-xl border border-line bg-surface/50 px-2.5 py-1.5 transition-all hover:border-red-500/30"
+                    >
+                      {comp.iconUrl ? (
+                        <Image
+                          src={comp.iconUrl}
+                          alt=""
+                          width={20}
+                          height={20}
+                          unoptimized
+                          className="h-5 w-5 rounded-md border border-line/45 shadow-sm"
+                        />
+                      ) : (
+                        <div className="flex h-5 w-5 items-center justify-center rounded-md bg-surface-3 border border-line/40">
+                          <Smartphone size={10} className="text-faint" />
+                        </div>
+                      )}
+                      <div className="max-w-[120px]">
+                        <p className="truncate text-xs font-semibold text-white/90" title={comp.name}>{comp.name}</p>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveCompetitor(comp.id)}
+                        className="absolute -top-1.5 -right-1.5 hidden h-4.5 w-4.5 items-center justify-center rounded-full bg-surface-3 border border-line text-[9px] text-faint hover:text-red-400 hover:border-red-500/40 group-hover:flex cursor-pointer transition-colors"
+                        title="Remove competitor"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {(!currentApp.competitors || currentApp.competitors.length === 0) && (
+                    <span className="text-xs text-muted">No competitors added. Compare your keyword rankings head-to-head.</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Add Competitor Trigger / Input */}
+              {(currentApp.competitors?.length ?? 0) < 5 && (
+                <div className="relative">
+                  {isAddingCompetitor ? (
+                    <form onSubmit={handleAddCompetitor} className="flex items-center gap-1.5 animate-slide-left">
+                      <input
+                        value={competitorQuery}
+                        onChange={(e) => setCompetitorQuery(e.target.value)}
+                        placeholder="Search App Name or paste Link..."
+                        autoFocus
+                        className="w-56 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs text-white outline-none focus:border-lime/80"
+                      />
+                      <button
+                        type="submit"
+                        disabled={addingComp}
+                        className="rounded-xl bg-lime px-3 py-1.5 text-xs font-bold text-ink hover:bg-lime-dim disabled:opacity-40 flex items-center gap-1 cursor-pointer"
+                      >
+                        {addingComp ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingCompetitor(false);
+                          setCompetitorQuery("");
+                          setError(null);
+                        }}
+                        className="rounded-xl border border-line bg-surface/50 px-2 py-1.5 text-xs text-faint hover:text-white cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={() => setIsAddingCompetitor(true)}
+                      className="flex items-center gap-1.5 rounded-xl border border-line bg-surface/50 px-3 py-1.5 text-xs font-semibold text-white hover:border-lime/30 active:scale-[0.98] transition-all cursor-pointer hover:shadow-[0_0_12px_rgba(198,244,50,0.03)]"
+                    >
+                      <Plus size={12} className="text-lime" />
+                      Add Competitor
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Tabs */}
           <div className="mb-5 flex gap-1 border-b border-line">
-            {(["keywords", "history"] as Tab[]).map((t) => (
+            {(["keywords", "history", "optimizer"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -277,7 +440,7 @@ export default function AppDetail({
                     : "border-transparent text-muted hover:text-white hover:border-line/50",
                 ].join(" ")}
               >
-                {t === "history" ? "Position History" : "Keywords"}
+                {t === "history" ? "Position History" : t === "optimizer" ? "AI Optimizer" : "Keywords"}
               </button>
             ))}
           </div>
@@ -322,6 +485,23 @@ export default function AppDetail({
                       <tr className="border-b border-line bg-surface/85 text-left text-xs uppercase tracking-wide text-faint">
                         <th className="px-5 py-3.5 font-semibold">Keyword</th>
                         <th className="w-28 px-5 py-3.5 font-semibold">Position</th>
+                        {currentApp.competitors?.map((comp) => (
+                          <th key={comp.id} className="w-32 px-5 py-3.5 font-semibold">
+                            <div className="flex items-center gap-1.5" title={comp.name}>
+                              {comp.iconUrl && (
+                                <Image
+                                  src={comp.iconUrl}
+                                  alt=""
+                                  width={16}
+                                  height={16}
+                                  unoptimized
+                                  className="h-4 w-4 rounded-md border border-line/30"
+                                />
+                              )}
+                              <span className="truncate max-w-[80px]">{comp.name}</span>
+                            </div>
+                          </th>
+                        ))}
                         <th className="w-40 px-5 py-3.5 font-semibold">Popularity</th>
                         <th className="w-44 px-5 py-3.5 font-semibold">Difficulty</th>
                         <th className="w-24 px-5 py-3.5 font-semibold">Trend</th>
@@ -331,10 +511,32 @@ export default function AppDetail({
                     <tbody className="divide-y divide-line/40">
                       {sortedKeywords.map((k) => (
                         <tr key={k.id} className="group border-b border-line/60 last:border-0 hover:bg-surface/40 transition-colors duration-150">
-                          <td className="px-5 py-4 font-medium text-white">{k.term}</td>
+                          <td className="px-5 py-4 font-medium text-white">
+                            <div className="flex items-center gap-2">
+                              <span>{k.term}</span>
+                              <button
+                                onClick={() => setActiveGlobalTerm(k.term)}
+                                className="opacity-0 group-hover:opacity-100 hover:text-lime text-faint transition-all duration-200 cursor-pointer p-0.5"
+                                title="View localized global ranks"
+                              >
+                                <Globe size={13} />
+                              </button>
+                            </div>
+                          </td>
                           <td className="px-5 py-4">
                             <PositionCell position={k.position} delta={k.delta} />
                           </td>
+                          {currentApp.competitors?.map((comp) => {
+                            const compPos = k.competitorPositions?.[comp.appleId] ?? null;
+                            return (
+                              <td key={comp.id} className="px-5 py-4">
+                                <CompetitorPositionCell
+                                  position={compPos}
+                                  mainPosition={k.position}
+                                />
+                              </td>
+                            );
+                          })}
                           <td className="px-5 py-4">
                             <MetricBar value={k.popularity} tone="pop" />
                           </td>
@@ -376,10 +578,19 @@ export default function AppDetail({
                 from Apple&apos;s relevance ordering). Ranks update daily; use Refresh to check now.
               </p>
             </>
-          ) : (
+          ) : tab === "history" ? (
             <HistoryTab keywords={sortedKeywords} />
+          ) : (
+            <MetadataOptimizer appId={currentApp.id} />
           )}
         </>
+      )}
+      {activeGlobalTerm && (
+        <GlobalMatrixModal
+          appId={currentApp.id}
+          term={activeGlobalTerm}
+          onClose={() => setActiveGlobalTerm(null)}
+        />
       )}
     </div>
   );
@@ -406,6 +617,42 @@ function PositionCell({ position, delta }: { position: number | null; delta: num
         <Minus size={12} className="text-faint" />
       ) : null}
     </span>
+  );
+}
+
+function CompetitorPositionCell({
+  position,
+  mainPosition,
+}: {
+  position: number | null;
+  mainPosition: number | null;
+}) {
+  if (position == null) {
+    return <span className="text-sm text-faint">Not ranked</span>;
+  }
+
+  let comparisonElement = null;
+  if (mainPosition != null) {
+    if (position < mainPosition) {
+      comparisonElement = (
+        <span className="text-[9px] font-bold text-amber-500/80 uppercase px-1 py-0.25 rounded bg-amber-500/10 border border-amber-500/20 ml-2 whitespace-nowrap">
+          Beating Us
+        </span>
+      );
+    } else if (position > mainPosition) {
+      comparisonElement = (
+        <span className="text-[9px] font-bold text-emerald-400/80 uppercase px-1 py-0.25 rounded bg-emerald-500/10 border border-emerald-500/20 ml-2 whitespace-nowrap">
+          Winning
+        </span>
+      );
+    }
+  }
+
+  return (
+    <div className="flex items-center">
+      <span className="font-mono text-sm font-semibold tabular-nums text-white/95">#{position}</span>
+      {comparisonElement}
+    </div>
   );
 }
 

@@ -605,7 +605,7 @@ function triggerDownload(filename: string, content: string, mimeType: string) {
 
 function ExportMenu({ result }: { result: ReviewsResult }) {
   const [open, setOpen] = useState(false);
-  const slug = result.app.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  const slug = result.app.name.replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase();
   const date = new Date().toISOString().slice(0, 10);
 
   const options = [

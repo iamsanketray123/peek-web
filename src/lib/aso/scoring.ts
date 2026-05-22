@@ -20,7 +20,7 @@ import type { Competitor } from "./itunes";
 // ───────────────────────── helpers ─────────────────────────
 
 function tokenize(s: string): string[] {
-  return (s ?? "").toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return (s ?? "").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
 function median(nums: number[]): number {

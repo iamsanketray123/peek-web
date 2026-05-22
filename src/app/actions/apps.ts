@@ -9,6 +9,15 @@ import { computeKeywordMetrics, findAppRank } from "@/lib/aso/rank";
 
 // ── DTOs ──────────────────────────────────────────────────────────────────
 
+export interface CompetitorAppDTO {
+  id: string;
+  appleId: string;
+  name: string;
+  developer: string;
+  iconUrl: string | null;
+  createdAt: string;
+}
+
 export interface TrackedAppDTO {
   id: string;
   appleId: string;
@@ -24,6 +33,7 @@ export interface TrackedAppDTO {
   keywordCount: number;
   createdAt: string;
   seedStatus: string;
+  competitors?: CompetitorAppDTO[];
 }
 
 export interface RankPointDTO {
@@ -41,6 +51,7 @@ export interface AppKeywordDTO {
   delta: number | null; // previous - latest (positive = moved up)
   metricsUpdatedAt: string | null;
   history: RankPointDTO[];
+  competitorPositions?: Record<string, number | null>;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -66,6 +77,14 @@ function appToDTO(a: {
   createdAt: Date;
   seedStatus: string;
   _count?: { keywords: number };
+  competitors?: {
+    id: string;
+    appleId: string;
+    name: string;
+    developer: string;
+    iconUrl: string | null;
+    createdAt: Date;
+  }[];
 }): TrackedAppDTO {
   return {
     id: a.id,
@@ -82,6 +101,14 @@ function appToDTO(a: {
     keywordCount: a._count?.keywords ?? 0,
     createdAt: a.createdAt.toISOString(),
     seedStatus: a.seedStatus,
+    competitors: a.competitors?.map((c) => ({
+      id: c.id,
+      appleId: c.appleId,
+      name: c.name,
+      developer: c.developer,
+      iconUrl: c.iconUrl,
+      createdAt: c.createdAt.toISOString(),
+    })),
   };
 }
 
@@ -136,7 +163,7 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
     // cleanly. The old /'s\b/ regex missed curly quotes, producing junk like "men s".
     const stripApos = (s: string) => s.replace(/[‘’ʼ']/g, "");
     const clean = (s: string) =>
-      stripApos(s.toLowerCase()).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+      stripApos(s.toLowerCase()).replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
 
     const nameLower = stripApos(app.name.toLowerCase());
     const separatorIdx = nameLower.search(/[:\-–—|]/);
@@ -241,7 +268,7 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
         // Split the competitor title on separators so brand and subtitle mine separately.
         const segments = stripApos(comp.trackName.toLowerCase()).split(/[:\-–—|()[\]]/);
         for (const seg of segments) {
-          const words = seg.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(isStrong);
+          const words = seg.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(isStrong);
           for (const w of words) bucket0.set(w, (bucket0.get(w) ?? 0) + 1); // unigrams
           for (let i = 0; i < words.length - 1; i++) {
             const bg = `${words[i]} ${words[i + 1]}`;
@@ -255,7 +282,7 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
     const subtitleSegments = descriptivePart
       .replace(/'s\b/g, "s")
       .split(/[&+,•:\-–—|]/)
-      .map((s) => s.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim())
+      .map((s) => s.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim())
       .filter((s) => {
         const words = s.split(/\s+/).filter((w) => w.length >= 3 && !stopwords.has(w));
         return words.length >= 1 && words.length <= 4 && s.length >= 3 && s.length <= 30;
@@ -273,7 +300,7 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
     if (description) {
       const sentences = stripApos(description.toLowerCase())
         .split(/[.!?;\n\-\u2022]/)
-        .map(s => s.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim())
+        .map(s => s.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim())
         .filter(s => s.length > 5);
 
       const bigramCounts: Record<string, number> = {};
@@ -607,9 +634,15 @@ export async function getTrackedApp(
     where: { id, userId: user.id },
     include: {
       _count: { select: { keywords: true } },
+      competitors: {
+        orderBy: { createdAt: "asc" },
+      },
       keywords: {
         orderBy: { createdAt: "asc" },
-        include: { snapshots: { orderBy: { checkedAt: "asc" } } },
+        include: {
+          snapshots: { orderBy: { checkedAt: "asc" } },
+          competitorSnapshots: { orderBy: { checkedAt: "asc" } },
+        },
       },
     },
   });
@@ -626,6 +659,17 @@ export async function getTrackedApp(
       latest?.position != null && prev?.position != null
         ? prev.position - latest.position // positive = improved (smaller number)
         : null;
+
+    // Map latest competitor positions
+    const competitorPositions: Record<string, number | null> = {};
+    const latestCompSnapshots: Record<string, number | null> = {};
+    for (const snap of k.competitorSnapshots) {
+      latestCompSnapshots[snap.competitorId] = snap.position;
+    }
+    for (const comp of app.competitors) {
+      competitorPositions[comp.appleId] = latestCompSnapshots[comp.id] ?? null;
+    }
+
     return {
       id: k.id,
       term: k.term,
@@ -636,6 +680,7 @@ export async function getTrackedApp(
       delta,
       metricsUpdatedAt: k.metricsUpdatedAt?.toISOString() ?? null,
       history,
+      competitorPositions,
     };
   });
 
@@ -654,7 +699,12 @@ export async function addAppKeyword(
   const app = await prisma.trackedApp.findFirst({ where: { id: appId, userId: user.id } });
   if (!app) throw new Error("App not found.");
 
-  const metrics = await computeKeywordMetrics(app.appleId, cleanTerm, app.country);
+  const competitors = await prisma.competitorApp.findMany({
+    where: { trackedAppId: appId }
+  });
+  const competitorAppleIds = competitors.map(c => c.appleId);
+
+  const metrics = await computeKeywordMetrics(app.appleId, cleanTerm, app.country, competitorAppleIds);
 
   const kw = await prisma.appKeyword.upsert({
     where: { appId_term: { appId, term: cleanTerm } },
@@ -677,6 +727,19 @@ export async function addAppKeyword(
     include: { snapshots: { orderBy: { checkedAt: "asc" } } },
   });
 
+  if (metrics.competitorPositions) {
+    for (const comp of competitors) {
+      const compPos = metrics.competitorPositions[comp.appleId] ?? null;
+      await prisma.competitorRankSnapshot.create({
+        data: {
+          competitorId: comp.id,
+          appKeywordId: kw.id,
+          position: compPos
+        }
+      });
+    }
+  }
+
   revalidatePath(`/apps/${appId}`);
 
   const history: RankPointDTO[] = kw.snapshots.map((s) => ({
@@ -688,6 +751,13 @@ export async function addAppKeyword(
   const delta =
     latest?.position != null && prev?.position != null ? prev.position - latest.position : null;
 
+  const competitorPositions: Record<string, number | null> = {};
+  if (metrics.competitorPositions) {
+    for (const comp of competitors) {
+      competitorPositions[comp.appleId] = metrics.competitorPositions[comp.appleId] ?? null;
+    }
+  }
+
   return {
     id: kw.id,
     term: kw.term,
@@ -698,6 +768,7 @@ export async function addAppKeyword(
     delta,
     metricsUpdatedAt: kw.metricsUpdatedAt?.toISOString() ?? null,
     history,
+    competitorPositions,
   };
 }
 
@@ -743,9 +814,30 @@ export async function refreshAppRanks(appId: string): Promise<void> {
         return;
       }
 
+      const competitors = await prisma.competitorApp.findMany({
+        where: { trackedAppId: appId }
+      });
+      const competitorAppleIds = competitors.map(c => c.appleId);
+
       for (const kw of app.keywords) {
-        const position = await findAppRank(app.appleId, kw.term, app.country);
-        await prisma.rankSnapshot.create({ data: { appKeywordId: kw.id, position } });
+        const metrics = await computeKeywordMetrics(app.appleId, kw.term, app.country, competitorAppleIds);
+        
+        await prisma.rankSnapshot.create({
+          data: { appKeywordId: kw.id, position: metrics.position }
+        });
+
+        if (metrics.competitorPositions) {
+          for (const comp of competitors) {
+            const compPos = metrics.competitorPositions[comp.appleId] ?? null;
+            await prisma.competitorRankSnapshot.create({
+              data: {
+                competitorId: comp.id,
+                appKeywordId: kw.id,
+                position: compPos
+              }
+            });
+          }
+        }
       }
 
       // Mark completed
@@ -764,4 +856,292 @@ export async function refreshAppRanks(appId: string): Promise<void> {
       revalidatePath(`/apps/${appId}`);
     }
   });
+}
+
+// ── Competitor Management ──────────────────────────────────────────────────
+
+/**
+ * Add a competitor to track. Resolves competitor app details via iTunes search,
+ * stores the competitor under the parent tracked app, and builds historical
+ * ranks for all currently tracked keywords of that app in the background.
+ */
+export async function addCompetitorApp(
+  trackedAppId: string,
+  competitorQuery: string
+): Promise<CompetitorAppDTO> {
+  const user = await requireUser();
+  const query = competitorQuery.trim();
+  if (!query) throw new Error("Enter an App Store URL, ID, or app name.");
+
+  // Verify ownership of the trackedApp
+  const trackedApp = await prisma.trackedApp.findFirst({
+    where: { id: trackedAppId, userId: user.id },
+    include: { competitors: true }
+  });
+  if (!trackedApp) throw new Error("App not found.");
+
+  // Enforce max 5 competitors limit
+  if (trackedApp.competitors.length >= 5) {
+    throw new Error("You can track up to 5 competitors per app.");
+  }
+
+  // Resolve competitor app details using itunes api
+  const id = extractAppleId(query);
+  const app = id
+    ? await lookupApp(id, trackedApp.country)
+    : (await searchApps(query, trackedApp.country, 1))[0] ?? null;
+
+  if (!app) throw new Error("No competitor app found. Try a different name or App Store link.");
+
+  const competitorAppleId = String(app.trackId);
+  if (competitorAppleId === trackedApp.appleId) {
+    throw new Error("You cannot add the main tracked app as a competitor.");
+  }
+
+  // Check if already tracking this competitor for this app
+  const existing = trackedApp.competitors.find(c => c.appleId === competitorAppleId);
+  if (existing) {
+    throw new Error("This competitor is already being tracked.");
+  }
+
+  // Create competitor app record
+  const competitor = await prisma.competitorApp.create({
+    data: {
+      trackedAppId,
+      appleId: competitorAppleId,
+      name: app.trackName,
+      developer: app.sellerName || app.artistName,
+      iconUrl: app.artworkUrl100 ?? app.artworkUrl512 ?? null,
+    }
+  });
+
+  // Background action: Fetch historical/current rank snapshots for this competitor across ALL current tracked keywords
+  after(async () => {
+    try {
+      const keywords = await prisma.appKeyword.findMany({
+        where: { appId: trackedAppId }
+      });
+      for (const kw of keywords) {
+        const position = await findAppRank(competitorAppleId, kw.term, trackedApp.country);
+        await prisma.competitorRankSnapshot.create({
+          data: {
+            competitorId: competitor.id,
+            appKeywordId: kw.id,
+            position
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Failed to populate competitor snapshots in background:", err);
+    }
+  });
+
+  revalidatePath(`/apps/${trackedAppId}`);
+  return {
+    id: competitor.id,
+    appleId: competitor.appleId,
+    name: competitor.name,
+    developer: competitor.developer,
+    iconUrl: competitor.iconUrl,
+    createdAt: competitor.createdAt.toISOString()
+  };
+}
+
+/**
+ * Remove a tracked competitor app (cascades deletion of competitor rank snapshots).
+ */
+export async function removeCompetitorApp(competitorId: string): Promise<void> {
+  const user = await requireUser();
+  
+  // Find competitor first to verify ownership of parent tracked app
+  const competitor = await prisma.competitorApp.findFirst({
+    where: { id: competitorId, trackedApp: { userId: user.id } },
+    select: { id: true, trackedAppId: true }
+  });
+  if (!competitor) throw new Error("Competitor not found or access denied.");
+
+  await prisma.competitorApp.delete({
+    where: { id: competitorId }
+  });
+
+  revalidatePath(`/apps/${competitor.trackedAppId}`);
+}
+
+// ── Global Storefront Matrix ────────────────────────────────────────────────
+
+export interface GlobalRankPoint {
+  country: string;
+  position: number | null;
+  popularity: number | null;
+  difficulty: number | null;
+}
+
+/**
+ * Computes organic rank and metric popularity across multiple global storefronts.
+ */
+export async function getGlobalRankMatrix(
+  appId: string,
+  term: string,
+  countries: string[]
+): Promise<GlobalRankPoint[]> {
+  const user = await requireUser();
+  const app = await prisma.trackedApp.findFirst({
+    where: { id: appId, userId: user.id }
+  });
+  if (!app) throw new Error("App not found.");
+
+  const cleanTerm = term.trim().toLowerCase();
+
+  const results = await Promise.all(
+    countries.map(async (country) => {
+      try {
+        const metrics = await computeKeywordMetrics(app.appleId, cleanTerm, country);
+        return {
+          country,
+          position: metrics.position,
+          popularity: metrics.popularity,
+          difficulty: metrics.difficulty,
+        };
+      } catch (err) {
+        console.error(`Failed to lookup global rank in ${country}:`, err);
+        return {
+          country,
+          position: null,
+          popularity: null,
+          difficulty: null,
+        };
+      }
+    })
+  );
+
+  return results;
+}
+
+// ── AI Metadata Optimizer ───────────────────────────────────────────────────
+
+export interface OptimizedMetadata {
+  title: string;
+  subtitle: string;
+  keywords: string;
+  explanation: string[];
+}
+
+/**
+ * Automatically builds optimized Titles, Subtitles, and 100-character keyword sets
+ * using target generic search volumes and strict non-duplication constraints.
+ */
+export async function generateOptimizedMetadata(
+  appId: string
+): Promise<OptimizedMetadata> {
+  const user = await requireUser();
+  const app = await prisma.trackedApp.findFirst({
+    where: { id: appId, userId: user.id },
+    include: { keywords: true }
+  });
+  if (!app) throw new Error("App not found.");
+
+  // Pick keywords that have popularity sorted descending
+  const sortedKws = [...app.keywords]
+    .filter(k => k.popularity != null)
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
+
+  // Determine Brand Token (first word of name, e.g. "Dr. Kegel" -> "Dr. Kegel")
+  const brandClean = app.name.split(/[:\-–—|]/)[0].trim();
+  let title = brandClean;
+
+  // Find high-value generic terms to append to Title if they fit within 30 chars
+  const titleCandidates = sortedKws.map(k => k.term);
+  for (const cand of titleCandidates) {
+    if (cand.length > 18) continue;
+    const testTitle = `${brandClean}: ${cand}`;
+    if (testTitle.length <= 30 && testTitle.toLowerCase() !== app.name.toLowerCase()) {
+      title = testTitle;
+      break;
+    }
+  }
+
+  if (title.length > 30) {
+    title = title.slice(0, 30).trim();
+  }
+
+  // Generate Subtitle: combine high-scoring descriptive tokens under 30 chars
+  const selectedSubWords: string[] = [];
+  let subtitle = "";
+  
+  const tokenScores: Record<string, number> = {};
+  for (const k of sortedKws) {
+    const words = k.term.split(/\s+/);
+    for (const w of words) {
+      if (w.length >= 3) {
+        tokenScores[w] = (tokenScores[w] ?? 0) + (k.popularity ?? 10);
+      }
+    }
+  }
+
+  const sortedTokens = Object.entries(tokenScores)
+    .sort((a, b) => b[1] - a[1])
+    .map(e => e[0]);
+
+  for (const t of sortedTokens) {
+    const capToken = t.charAt(0).toUpperCase() + t.slice(1);
+    if (title.toLowerCase().includes(t.toLowerCase())) continue;
+    if (selectedSubWords.includes(capToken)) continue;
+
+    const testWords = [...selectedSubWords, capToken];
+    let testSub = "";
+    if (testWords.length === 1) {
+      testSub = testWords[0];
+    } else if (testWords.length === 2) {
+      testSub = testWords.join(" & ");
+    } else {
+      testSub = `${testWords.slice(0, -1).join(", ")} & ${testWords[testWords.length - 1]}`;
+    }
+
+    if (testSub.length <= 30) {
+      selectedSubWords.push(capToken);
+      subtitle = testSub;
+    }
+  }
+
+  if (!subtitle) {
+    subtitle = "Exercises, Workout & Tracker".slice(0, 30);
+  }
+
+  // Generate 100-character keyword field
+  const titleTokens = new Set(title.toLowerCase().split(/[^\p{L}\p{N}]+/gu).filter(Boolean));
+  const subtitleTokens = new Set(subtitle.toLowerCase().split(/[^\p{L}\p{N}]+/gu).filter(Boolean));
+  
+  const kwTokens: string[] = [];
+  const addedKwTokens = new Set<string>();
+
+  for (const k of sortedKws) {
+    const words = k.term.toLowerCase().split(/[^\p{L}\p{N}]+/gu).filter(Boolean);
+    for (const w of words) {
+      if (w.length < 2) continue;
+      if (titleTokens.has(w) || subtitleTokens.has(w)) continue;
+      if (addedKwTokens.has(w)) continue;
+
+      const currentString = [...kwTokens, w].join(",");
+      if (currentString.length <= 100) {
+        kwTokens.push(w);
+        addedKwTokens.add(w);
+      }
+    }
+  }
+
+  const keywordString = kwTokens.join(",");
+
+  const explanation = [
+    `🏷️ Created Title: "${title}" (${title.length}/30 characters) packed with your top organic keywords.`,
+    `✍️ Composed Subtitle: "${subtitle}" (${subtitle.length}/30 characters) utilizing popular modifiers to capture search intent.`,
+    `🤫 Constructed a 100-character Keyword list: "${keywordString}" (${keywordString.length}/100 characters).`,
+    `💡 ASO Gold Rule: Fully removed duplicate words that are already in the Title or Subtitle (Apple indexes those automatically!), saving valuable space to target extra niche terms.`
+  ];
+
+  return {
+    title,
+    subtitle,
+    keywords: keywordString,
+    explanation,
+  };
 }
