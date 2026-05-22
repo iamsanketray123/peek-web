@@ -47,7 +47,7 @@ const SECTIONS: NavSection[] = [
   {
     title: "Analytics",
     items: [
-      { label: "Reviews", href: "/soon", icon: Star },
+      { label: "Reviews", href: "/reviews", icon: Star, ready: true },
       { label: "Insights", href: "/soon", icon: LineChart },
     ],
   },
