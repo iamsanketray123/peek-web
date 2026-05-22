@@ -53,6 +53,12 @@ export default function RankChart({
 
   return (
     <svg width={width} height={height} className="overflow-visible">
+      <defs>
+        <linearGradient id="lime-gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-lime)" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="var(--color-lime)" stopOpacity="0.0" />
+        </linearGradient>
+      </defs>
       {showAxis && (
         <>
           <text x={2} y={pad + 3} className="fill-faint" fontSize="9">
@@ -63,6 +69,25 @@ export default function RankChart({
           </text>
         </>
       )}
+      {/* Background gradient area fill */}
+      {segments.map((pts, i) => {
+        const ptsArr = pts.split(" ");
+        if (ptsArr.length < 2) return null;
+        const firstPt = ptsArr[0].split(",");
+        const lastPt = ptsArr[ptsArr.length - 1].split(",");
+        const xStart = parseFloat(firstPt[0]);
+        const xEnd = parseFloat(lastPt[0]);
+        const yBottom = height - pad;
+        const pathD = `M ${xStart.toFixed(1)} ${yBottom.toFixed(1)} L ${pts} L ${xEnd.toFixed(1)} ${yBottom.toFixed(1)} Z`;
+        return (
+          <path
+            key={`area-${i}`}
+            d={pathD}
+            fill="url(#lime-gradient)"
+            stroke="none"
+          />
+        );
+      })}
       {segments.map((pts, i) => (
         <polyline
           key={i}

@@ -129,10 +129,10 @@ export default function AppDetail({
         <button
           onClick={handleRefresh}
           disabled={refreshing || keywords.length === 0}
-          className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-medium transition hover:border-lime/30 disabled:opacity-40"
+          className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-medium transition-all duration-200 hover:border-lime/30 active:scale-[0.98] disabled:active:scale-100 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed hover:shadow-[0_0_15px_rgba(198,244,50,0.05)] text-white"
           title="Re-check ranks now"
         >
-          <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />
+          <RefreshCw size={15} className={refreshing ? "animate-spin text-lime" : "text-faint transition-colors"} />
           Refresh
         </button>
       </div>
@@ -144,10 +144,10 @@ export default function AppDetail({
             key={t}
             onClick={() => setTab(t)}
             className={[
-              "px-4 py-2 text-sm font-medium capitalize transition-colors",
+              "px-4 py-2.5 text-sm font-medium capitalize transition-all duration-200 border-b-2 relative -mb-[1px] cursor-pointer",
               tab === t
-                ? "border-b-2 border-lime text-white"
-                : "text-muted hover:text-white",
+                ? "border-lime text-lime font-semibold"
+                : "border-transparent text-muted hover:text-white hover:border-line/50",
             ].join(" ")}
           >
             {t === "history" ? "Position History" : "Keywords"}
@@ -169,12 +169,12 @@ export default function AppDetail({
               value={term}
               onChange={(e) => setTerm(e.target.value)}
               placeholder="Add a keyword to track (e.g. habit tracker)…"
-              className="flex-1 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm outline-none focus:border-lime/50"
+              className="flex-1 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-white outline-none transition-all duration-200 focus:border-lime/80 focus:ring-2 focus:ring-lime/10"
             />
             <button
               type="submit"
               disabled={adding}
-              className="flex items-center gap-2 rounded-xl bg-lime px-5 py-2.5 text-sm font-semibold text-ink transition hover:bg-lime-dim disabled:opacity-40"
+              className="flex items-center gap-2 rounded-xl bg-lime px-5 py-2.5 text-sm font-semibold text-ink transition-all duration-200 hover:bg-lime-dim active:scale-[0.98] disabled:active:scale-100 disabled:opacity-40 cursor-pointer hover:shadow-[0_0_20px_rgba(198,244,50,0.15)]"
             >
               {adding ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
               Add
@@ -189,50 +189,50 @@ export default function AppDetail({
               </p>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-line">
+            <div className="overflow-hidden rounded-2xl border border-line bg-surface/20">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-line bg-surface text-left text-xs uppercase tracking-wide text-faint">
-                    <th className="px-4 py-3 font-medium">Keyword</th>
-                    <th className="w-28 px-4 py-3 font-medium">Position</th>
-                    <th className="w-40 px-4 py-3 font-medium">Popularity</th>
-                    <th className="w-44 px-4 py-3 font-medium">Difficulty</th>
-                    <th className="w-24 px-4 py-3 font-medium">Trend</th>
-                    <th className="w-10 px-4 py-3"></th>
+                  <tr className="border-b border-line bg-surface/85 text-left text-xs uppercase tracking-wide text-faint">
+                    <th className="px-5 py-3.5 font-semibold">Keyword</th>
+                    <th className="w-28 px-5 py-3.5 font-semibold">Position</th>
+                    <th className="w-40 px-5 py-3.5 font-semibold">Popularity</th>
+                    <th className="w-44 px-5 py-3.5 font-semibold">Difficulty</th>
+                    <th className="w-24 px-5 py-3.5 font-semibold">Trend</th>
+                    <th className="w-12 px-5 py-3.5"></th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-line/40">
                   {keywords.map((k) => (
-                    <tr key={k.id} className="border-b border-line/60 last:border-0 hover:bg-surface/50">
-                      <td className="px-4 py-3 font-medium">{k.term}</td>
-                      <td className="px-4 py-3">
+                    <tr key={k.id} className="group border-b border-line/60 last:border-0 hover:bg-surface/40 transition-colors duration-150">
+                      <td className="px-5 py-4 font-medium text-white">{k.term}</td>
+                      <td className="px-5 py-4">
                         <PositionCell position={k.position} delta={k.delta} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <MetricBar value={k.popularity} tone="pop" />
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
                           <div className="flex-1">
                             <MetricBar value={k.difficulty} tone="diff" />
                           </div>
                           {k.difficultyLabel && (
-                            <span className="shrink-0 text-[11px] text-faint">{k.difficultyLabel}</span>
+                            <span className="shrink-0 text-[11px] font-medium text-faint">{k.difficultyLabel}</span>
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <RankChart history={k.history} width={72} height={26} />
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-5 py-4 text-right">
                         <button
                           onClick={() => handleRemove(k.id)}
                           disabled={removingId === k.id}
-                          className="rounded-lg p-1.5 text-faint transition hover:bg-surface-3 hover:text-red-300 disabled:opacity-40"
+                          className="rounded-lg p-2 text-faint opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-200 hover:bg-surface-3 hover:text-red-300 disabled:opacity-40 cursor-pointer"
                           title="Remove keyword"
                         >
                           {removingId === k.id ? (
-                            <Loader2 size={15} className="animate-spin" />
+                            <Loader2 size={15} className="animate-spin text-red-400" />
                           ) : (
                             <Trash2 size={15} />
                           )}
@@ -295,7 +295,7 @@ function HistoryTab({ keywords }: { keywords: AppKeywordDTO[] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {withHistory.map((k) => (
-        <div key={k.id} className="rounded-2xl border border-line bg-surface p-4">
+        <div key={k.id} className="rounded-2xl border border-line bg-surface p-4 transition-all duration-200 hover:border-lime/30 hover:shadow-[0_4px_20px_rgba(198,244,50,0.02)]">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-medium">{k.term}</p>
             <PositionCell position={k.position} delta={k.delta} />

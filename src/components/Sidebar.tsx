@@ -84,7 +84,7 @@ export default function Sidebar({ userEmail }: { userEmail: string | null }) {
                     <Link
                       href={item.href}
                       className={[
-                        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-100 active:scale-[0.98] cursor-pointer",
                         active
                           ? "bg-lime/10 font-medium text-lime"
                           : "text-muted hover:bg-surface-2 hover:text-white",
@@ -109,34 +109,35 @@ export default function Sidebar({ userEmail }: { userEmail: string | null }) {
       <div className="space-y-1 border-t border-line p-3">
         <Link
           href="/soon"
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-white"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-white active:scale-[0.98] transition-all duration-100 cursor-pointer"
         >
           <Settings size={17} />
           Settings
         </Link>
 
         {userEmail ? (
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-3 text-xs font-medium uppercase">
+          <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-surface-2/30 border border-line/30">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-3 text-xs font-medium uppercase border border-line">
               {userEmail[0]}
             </div>
-            <span className="min-w-0 flex-1 truncate text-xs text-muted" title={userEmail}>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted font-medium" title={userEmail}>
               {userEmail}
             </span>
             <form action="/auth/signout" method="post">
               <button
                 type="submit"
-                className="text-faint hover:text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-faint hover:bg-surface-3 hover:text-red-400 active:scale-90 transition-all duration-150 cursor-pointer"
                 title="Sign out"
+                aria-label="Sign out"
               >
-                <LogOut size={15} />
+                <LogOut size={14} />
               </button>
             </form>
           </div>
         ) : (
           <Link
             href="/login"
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-white"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-white active:scale-[0.98] transition-all duration-100 cursor-pointer"
           >
             <LogIn size={17} />
             Log in

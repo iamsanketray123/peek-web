@@ -121,20 +121,20 @@ export default function KeywordExplorer({
 
       {/* Search bar */}
       <form onSubmit={onSearch} className="mb-6 flex flex-col gap-2 sm:flex-row">
-        <div className="flex flex-1 items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 focus-within:border-lime/50">
+        <div className="flex flex-1 items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 transition-all duration-200 focus-within:border-lime/80 focus-within:ring-2 focus-within:ring-lime/10">
           <Search size={18} className="text-faint" />
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="Enter a keyword, e.g. kegel trainer"
-            className="w-full bg-transparent text-sm outline-none placeholder:text-faint"
+            className="w-full bg-transparent text-sm outline-none placeholder:text-faint text-white"
             autoFocus
           />
         </div>
         <select
           value={country}
           onChange={(e) => setCountry(e.target.value)}
-          className="rounded-xl border border-line bg-surface px-3 py-3 text-sm outline-none focus:border-lime/50"
+          className="rounded-xl border border-line bg-surface px-3 py-3 text-sm outline-none transition-all duration-200 focus:border-lime/80 focus:ring-2 focus:ring-lime/10 cursor-pointer text-white"
         >
           {COUNTRIES.map((c) => (
             <option key={c.code} value={c.code} className="bg-surface">
@@ -145,7 +145,7 @@ export default function KeywordExplorer({
         <button
           type="submit"
           disabled={loading || !keyword.trim()}
-          className="flex items-center justify-center gap-2 rounded-xl bg-lime px-6 py-3 text-sm font-semibold text-ink transition hover:bg-lime-dim disabled:opacity-40"
+          className="flex items-center justify-center gap-2 rounded-xl bg-lime px-6 py-3 text-sm font-semibold text-ink transition-all duration-200 hover:bg-lime-dim active:scale-[0.98] hover:shadow-[0_0_20px_rgba(198,244,50,0.15)] disabled:opacity-40 disabled:active:scale-100 cursor-pointer"
         >
           {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
           Check
@@ -155,12 +155,12 @@ export default function KeywordExplorer({
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
         {/* Tracked keywords panel */}
         <aside className="order-2 lg:order-1">
-          <div className="rounded-xl border border-line bg-surface">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <div className="rounded-2xl border border-line bg-surface/80 shadow-lg backdrop-blur-md transition-all duration-300 hover:border-lime/25 hover:shadow-[0_4px_25px_rgba(198,244,50,0.02)]">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3.5">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
                 <Bookmark size={15} className="text-lime" /> Tracked Keywords
               </h2>
-              <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs text-muted">
+              <span className="rounded-md border border-line/60 bg-surface-3/50 px-2 py-0.5 font-mono text-[11px] font-bold text-white shadow-inner">
                 {saved.length}
               </span>
             </div>
@@ -170,7 +170,7 @@ export default function KeywordExplorer({
                 <p className="mb-3 text-sm text-muted">Sign in to save and track keywords.</p>
                 <Link
                   href="/login"
-                  className="inline-block rounded-lg bg-lime px-4 py-2 text-sm font-semibold text-ink hover:bg-lime-dim"
+                  className="inline-block rounded-lg bg-lime px-4 py-2 text-sm font-semibold text-ink hover:bg-lime-dim active:scale-95 transition-all cursor-pointer shadow-[0_0_15px_rgba(198,244,50,0.1)]"
                 >
                   Sign in
                 </Link>
@@ -180,18 +180,36 @@ export default function KeywordExplorer({
                 No saved keywords yet. Search one, then tap the star.
               </p>
             ) : (
-              <ul className="max-h-[600px] divide-y divide-line overflow-y-auto">
+              <ul className="max-h-[600px] divide-y divide-line/40 overflow-y-auto">
                 {saved.map((s) => (
-                  <li key={s.id} className="group flex items-center gap-2 px-4 py-2.5 hover:bg-surface-2/50">
-                    <button onClick={() => openSaved(s)} className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-sm">{s.term}</p>
-                      <p className="text-xs text-faint">
-                        {s.country.toUpperCase()} · pop {s.popularity ?? "—"} · diff {s.difficulty ?? "—"}
-                      </p>
+                  <li key={s.id} className="group flex items-center gap-3 px-4 py-3 hover:bg-surface-2/40 transition-colors">
+                    <button 
+                      onClick={() => openSaved(s)} 
+                      disabled={loading}
+                      className="min-w-0 flex-1 text-left active:scale-[0.98] transition-transform duration-100 cursor-pointer"
+                    >
+                      <div className="flex flex-col gap-1.5">
+                        <p className="truncate text-sm font-semibold text-white group-hover:text-lime transition-colors duration-200">
+                          {s.term}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                          <span className="rounded border border-line bg-surface-3/40 px-1.5 py-0.25 font-mono text-[9px] font-bold tracking-wider text-muted uppercase">
+                            {s.country}
+                          </span>
+                          <span className="flex items-center gap-1 text-[11px] font-medium text-muted">
+                            <span className="h-1.5 w-1.5 rounded-full bg-lime/80 shadow-[0_0_8px_rgba(198,244,50,0.5)]" />
+                            Pop <span className="font-mono font-semibold text-white">{s.popularity ?? "—"}</span>
+                          </span>
+                          <span className="flex items-center gap-1 text-[11px] font-medium text-muted">
+                            <span className={`h-1.5 w-1.5 rounded-full ${s.difficulty ? (s.difficulty <= 35 ? "bg-green-400" : s.difficulty <= 65 ? "bg-amber-400" : "bg-red-400") : "bg-faint"}`} />
+                            Diff <span className={`font-mono font-semibold ${s.difficulty ? (s.difficulty <= 35 ? "text-green-400" : s.difficulty <= 65 ? "text-amber-400" : "text-red-400") : "text-faint"}`}>{s.difficulty ?? "—"}</span>
+                          </span>
+                        </div>
+                      </div>
                     </button>
                     <button
                       onClick={() => removeOne(s.id)}
-                      className="text-faint opacity-0 transition group-hover:opacity-100 hover:text-red-400"
+                      className="text-faint opacity-0 transition group-hover:opacity-100 hover:text-red-400 p-1.5 rounded hover:bg-surface-3 cursor-pointer shrink-0 active:scale-90"
                       title="Remove"
                     >
                       <Trash2 size={14} />
@@ -211,37 +229,41 @@ export default function KeywordExplorer({
             </div>
           )}
 
-          {!result && !error && !loading && (
+          {loading ? (
+            <KeywordSkeleton />
+          ) : !result && !error ? (
             <div className="rounded-xl border border-dashed border-line bg-surface/40 px-6 py-16 text-center text-muted">
               <Search size={28} className="mx-auto mb-3 text-faint" />
               <p className="text-sm">Search a keyword to see its ASO metrics and the apps ranking for it.</p>
             </div>
-          )}
-
-          {result && (
+          ) : result ? (
             <div className="space-y-6">
               {/* Save bar */}
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-medium">
+                <h2 className="text-lg font-medium text-white">
                   <span className="text-lime">&ldquo;{result.keyword}&rdquo;</span>
                 </h2>
                 {isAuthed ? (
                   <button
                     onClick={toggleSave}
                     disabled={savingState}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition disabled:opacity-50 ${
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition duration-200 active:scale-[0.96] disabled:opacity-50 cursor-pointer ${
                       currentSaved
-                        ? "border-lime/40 bg-lime/10 text-lime"
-                        : "border-line bg-surface text-muted hover:text-white"
+                        ? "border-lime/40 bg-lime/10 text-lime hover:bg-lime/20"
+                        : "border-line bg-surface text-muted hover:text-white hover:bg-surface-2"
                     }`}
                   >
-                    <Star size={15} className={currentSaved ? "fill-lime" : ""} />
+                    {savingState ? (
+                      <Loader2 size={15} className="animate-spin text-lime" />
+                    ) : (
+                      <Star size={15} className={currentSaved ? "fill-lime text-lime" : ""} />
+                    )}
                     {currentSaved ? "Saved" : "Save"}
                   </button>
                 ) : (
                   <Link
                     href="/login"
-                    className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-muted hover:text-white"
+                    className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-muted hover:text-white hover:bg-surface-2 transition duration-200 active:scale-[0.96] cursor-pointer"
                   >
                     <Star size={15} /> Save
                   </Link>
@@ -323,7 +345,7 @@ export default function KeywordExplorer({
                 Apps sorted by rating count. All metrics are estimates from the public iTunes Search API.
               </p>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -398,6 +420,77 @@ function AppsModal({ keyword, apps, onClose }: { keyword: string; apps: RankedAp
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+function KeywordSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      {/* Save bar skeleton */}
+      <div className="flex items-center justify-between">
+        <div className="h-6 w-48 rounded-lg bg-surface-3" />
+        <div className="h-8 w-20 rounded-lg bg-surface-3" />
+      </div>
+
+      {/* Summary metrics skeleton */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="rounded-xl border border-line bg-surface p-4">
+            <div className="h-3 w-16 rounded bg-surface-3 mb-3" />
+            <div className="h-8 w-24 rounded-lg bg-surface-3 mb-2 font-mono text-2xl" />
+            <div className="h-1.5 w-full rounded-full bg-surface-3" />
+          </div>
+        ))}
+      </section>
+
+      {/* Targeting verdict skeleton */}
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5 sm:flex-row sm:items-center">
+        <div className="h-7 w-32 rounded-full bg-surface-3" />
+        <div className="h-4 flex-1 rounded bg-surface-3" />
+      </section>
+
+      {/* Difficulty by ranking tier skeleton */}
+      <section className="rounded-xl border border-line bg-surface p-5">
+        <div className="h-4 w-44 rounded bg-surface-3 mb-4" />
+        <div className="grid grid-cols-3 gap-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="rounded-lg bg-surface-2 p-3">
+              <div className="h-3 w-10 rounded bg-surface-3 mb-2" />
+              <div className="h-6 w-12 rounded bg-surface-3 mb-2" />
+              <div className="h-3 w-16 rounded bg-surface-3" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Apps ranking skeleton */}
+      <section className="overflow-hidden rounded-xl border border-line bg-surface">
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+          <div className="h-4 w-32 rounded bg-surface-3" />
+          <div className="h-3 w-12 rounded bg-surface-3" />
+        </div>
+        <ul className="divide-y divide-line">
+          {[...Array(5)].map((_, i) => (
+            <li key={i} className="flex items-center gap-3 px-5 py-4">
+              <div className="h-4 w-4 rounded bg-surface-3 shrink-0" />
+              <div className="h-10 w-10 rounded-xl bg-surface-3 shrink-0" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-4 w-1/3 rounded bg-surface-3" />
+                <div className="h-3 w-1/4 rounded bg-surface-3" />
+              </div>
+              <div className="hidden w-20 shrink-0 space-y-2 sm:block">
+                <div className="h-3 w-12 rounded bg-surface-3 ml-auto" />
+                <div className="h-3 w-16 rounded bg-surface-3 ml-auto" />
+              </div>
+              <div className="w-24 shrink-0 space-y-2">
+                <div className="h-4 w-16 rounded bg-surface-3 ml-auto" />
+                <div className="h-3 w-12 rounded bg-surface-3 ml-auto" />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
