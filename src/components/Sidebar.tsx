@@ -11,6 +11,8 @@ import {
   Star,
   Settings,
   Smartphone,
+  LogOut,
+  LogIn,
   type LucideIcon,
 } from "lucide-react";
 
@@ -51,7 +53,7 @@ const SECTIONS: NavSection[] = [
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ userEmail }: { userEmail: string | null }) {
   const pathname = usePathname();
 
   return (
@@ -100,7 +102,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-line p-3">
+      <div className="space-y-1 border-t border-line p-3">
         <Link
           href="/soon"
           className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-white"
@@ -108,6 +110,34 @@ export default function Sidebar() {
           <Settings size={17} />
           Settings
         </Link>
+
+        {userEmail ? (
+          <div className="flex items-center gap-2 rounded-lg px-3 py-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-3 text-xs font-medium uppercase">
+              {userEmail[0]}
+            </div>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted" title={userEmail}>
+              {userEmail}
+            </span>
+            <form action="/auth/signout" method="post">
+              <button
+                type="submit"
+                className="text-faint hover:text-white"
+                title="Sign out"
+              >
+                <LogOut size={15} />
+              </button>
+            </form>
+          </div>
+        ) : (
+          <Link
+            href="/login"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-white"
+          >
+            <LogIn size={17} />
+            Log in
+          </Link>
+        )}
       </div>
     </aside>
   );

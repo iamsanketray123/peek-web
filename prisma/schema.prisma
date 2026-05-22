@@ -1,0 +1,30 @@
+// Peek Web — Prisma schema.
+// Auth (users, sessions) is handled by Supabase Auth (auth.users).
+// We store only application data here, keyed by the Supabase user id (UUID).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled connection (pgbouncer) for serverless runtime
+  directUrl = env("DIRECT_URL")   // direct connection for migrations / db push
+}
+
+/// A keyword a user has saved/tracked from the Keyword Explorer.
+model SavedKeyword {
+  id             String   @id @default(cuid())
+  userId         String // Supabase auth.users.id
+  term           String
+  country        String   @default("us")
+  popularity     Int?
+  difficulty     Int?
+  opportunity    Int?
+  classification String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, term, country])
+  @@index([userId])
+}
