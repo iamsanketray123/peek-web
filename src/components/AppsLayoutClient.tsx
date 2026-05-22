@@ -115,6 +115,8 @@ export default function AppsLayoutClient({
     startTransition(async () => {
       try {
         await refreshAppRanks(id);
+        // Trigger a server re-render so the right panel picks up the new ranks.
+        router.refresh();
       } catch (err) {
         console.error("Failed to refresh app ranks", err);
       } finally {
