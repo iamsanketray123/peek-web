@@ -174,9 +174,9 @@ export default function AppDetail({
         </div>
         <button
           onClick={handleRefresh}
-          disabled={refreshing || keywords.length === 0 || isBackgroundProcessing}
+          disabled={refreshing || isBackgroundProcessing}
           className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-medium transition-all duration-200 hover:border-lime/30 active:scale-[0.98] disabled:active:scale-100 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed hover:shadow-[0_0_15px_rgba(198,244,50,0.05)] text-white"
-          title={isBackgroundProcessing ? "ASO keywords are seeding..." : "Re-check ranks now"}
+          title={isBackgroundProcessing ? "ASO keywords are seeding..." : "Re-check ranks and keywords"}
         >
           <RefreshCw size={15} className={refreshing ? "animate-spin text-lime" : "text-faint transition-colors"} />
           Refresh

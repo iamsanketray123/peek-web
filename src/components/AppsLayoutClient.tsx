@@ -14,8 +14,9 @@ import {
   Search,
   X,
   Bookmark,
+  RefreshCw,
 } from "lucide-react";
-import { addTrackedApp, removeTrackedApp, type TrackedAppDTO } from "@/app/actions/apps";
+import { addTrackedApp, removeTrackedApp, refreshAppRanks, type TrackedAppDTO } from "@/app/actions/apps";
 import { COUNTRIES } from "@/lib/format";
 
 export default function AppsLayoutClient({
@@ -34,6 +35,7 @@ export default function AppsLayoutClient({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
 
   // Auto-clear navigatingTo when navigation completes (pathname matched)
@@ -102,6 +104,21 @@ export default function AppsLayoutClient({
         console.error("Failed to remove app", err);
       } finally {
         setRemovingId(null);
+      }
+    });
+  }
+
+  function handleRefreshApp(e: React.MouseEvent, id: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    setRefreshingId(id);
+    startTransition(async () => {
+      try {
+        await refreshAppRanks(id);
+      } catch (err) {
+        console.error("Failed to refresh app ranks", err);
+      } finally {
+        setRefreshingId(null);
       }
     });
   }
@@ -228,19 +245,33 @@ export default function AppsLayoutClient({
                     </div>
                   </div>
 
-                  {/* Desktop delete */}
-                  <button
-                    onClick={(e) => handleRemove(e, app.id)}
-                    disabled={removingId === app.id}
-                    className="rounded-md p-1.5 text-faint opacity-0 transition group-hover:opacity-100 hover:bg-surface-3 hover:text-red-300 disabled:opacity-40 cursor-pointer"
-                    title="Remove app"
-                  >
-                    {removingId === app.id ? (
-                      <Loader2 size={13} className="animate-spin text-red-400" />
-                    ) : (
-                      <Trash2 size={13} />
-                    )}
-                  </button>
+                  {/* Desktop Actions */}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={(e) => handleRefreshApp(e, app.id)}
+                      disabled={refreshingId === app.id || app.seedStatus === "seeding" || app.seedStatus === "pending"}
+                      className="rounded-md p-1.5 text-faint opacity-0 transition group-hover:opacity-100 hover:bg-surface-3 hover:text-lime disabled:opacity-45 cursor-pointer"
+                      title="Refresh keywords & ranks"
+                    >
+                      {refreshingId === app.id || app.seedStatus === "seeding" || app.seedStatus === "pending" ? (
+                        <Loader2 size={13} className="animate-spin text-lime" />
+                      ) : (
+                        <RefreshCw size={13} />
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => handleRemove(e, app.id)}
+                      disabled={removingId === app.id}
+                      className="rounded-md p-1.5 text-faint opacity-0 transition group-hover:opacity-100 hover:bg-surface-3 hover:text-red-300 disabled:opacity-45 cursor-pointer"
+                      title="Remove app"
+                    >
+                      {removingId === app.id ? (
+                        <Loader2 size={13} className="animate-spin text-red-400" />
+                      ) : (
+                        <Trash2 size={13} />
+                      )}
+                    </button>
+                  </div>
                   <ChevronRight
                     size={14}
                     className="shrink-0 text-faint group-hover:text-lime transition-colors"

@@ -726,10 +726,42 @@ export async function refreshAppRanks(appId: string): Promise<void> {
   });
   if (!app) throw new Error("App not found.");
 
-  for (const kw of app.keywords) {
-    const position = await findAppRank(app.appleId, kw.term, app.country);
-    await prisma.rankSnapshot.create({ data: { appKeywordId: kw.id, position } });
-  }
-
+  // 1. Update status to seeding (refreshing) instantly to trigger visual loaders
+  await prisma.trackedApp.update({
+    where: { id: appId },
+    data: { seedStatus: "seeding" },
+  });
+  revalidatePath("/apps");
   revalidatePath(`/apps/${appId}`);
+
+  // 2. Offload rank check or seeding to background
+  after(async () => {
+    try {
+      if (app.keywords.length === 0) {
+        // Re-run full seeding using our dynamic NLP seed engine
+        await seedKeywordsForApp(appId);
+        return;
+      }
+
+      for (const kw of app.keywords) {
+        const position = await findAppRank(app.appleId, kw.term, app.country);
+        await prisma.rankSnapshot.create({ data: { appKeywordId: kw.id, position } });
+      }
+
+      // Mark completed
+      await prisma.trackedApp.update({
+        where: { id: appId },
+        data: { seedStatus: "completed" },
+      });
+    } catch (err) {
+      console.error("Background refresh failed:", err);
+      await prisma.trackedApp.update({
+        where: { id: appId },
+        data: { seedStatus: "completed" },
+      });
+    } finally {
+      revalidatePath("/apps");
+      revalidatePath(`/apps/${appId}`);
+    }
+  });
 }
