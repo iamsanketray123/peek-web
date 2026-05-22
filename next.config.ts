@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    // Apple App Store artwork is served from *.mzstatic.com
+    remotePatterns: [{ protocol: "https", hostname: "**.mzstatic.com" }],
+  },
 };
 
 export default nextConfig;
