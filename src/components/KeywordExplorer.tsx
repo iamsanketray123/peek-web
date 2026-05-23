@@ -396,9 +396,17 @@ function MetricCard({ label, big, children }: { label: string; big: React.ReactN
   );
 }
 
-/** Quality score: balances star rating with volume so a 4.7/10k beats a 5.0/1. */
+/**
+ * Quality score for "Best Rated" sort.
+ * Combines rating quality with volume, then discounts by search rank so that
+ * off-topic apps with huge review counts (ranked #28, #37 etc.) don't outrank
+ * focused apps that Apple actually places in the top 10 for the keyword.
+ * rank_weight: rank 1 → 1.0, rank 50 → 0.5 (square-root decay)
+ */
 function qualityScore(app: RankedApp): number {
-  return app.rating * Math.log10(app.ratingCount + 10);
+  const ratingQuality = app.rating * Math.log10(app.ratingCount + 10);
+  const rankWeight = 1 / Math.sqrt(app.rank);
+  return ratingQuality * rankWeight;
 }
 
 function sortApps(apps: RankedApp[], order: "rank" | "rated"): RankedApp[] {

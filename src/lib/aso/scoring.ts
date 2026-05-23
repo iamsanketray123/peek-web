@@ -431,9 +431,17 @@ const POP_TO_SEARCHES: [number, number][] = [
 const MAX_SEARCHES = 32_000;
 
 const TTR: Record<number, number> = {
+  // Positions 1–20: measured tap-through rates
   1: 0.3, 2: 0.18, 3: 0.12, 4: 0.085, 5: 0.06, 6: 0.045, 7: 0.033, 8: 0.025,
   9: 0.019, 10: 0.013, 11: 0.009, 12: 0.007, 13: 0.0055, 14: 0.0042, 15: 0.0033,
   16: 0.0025, 17: 0.0019, 18: 0.0014, 19: 0.001, 20: 0.0007,
+  // Positions 21–50: exponential decay (≈ ×0.82 per step from position 20)
+  21: 0.00057, 22: 0.00047, 23: 0.00038, 24: 0.00031, 25: 0.00026,
+  26: 0.00021, 27: 0.00017, 28: 0.00014, 29: 0.000115, 30: 0.000094,
+  31: 0.000077, 32: 0.000063, 33: 0.000052, 34: 0.000042, 35: 0.000035,
+  36: 0.000028, 37: 0.000023, 38: 0.000019, 39: 0.000016, 40: 0.000013,
+  41: 0.000011, 42: 0.000009, 43: 0.0000074, 44: 0.0000061, 45: 0.000005,
+  46: 0.0000041, 47: 0.0000034, 48: 0.0000028, 49: 0.0000023, 50: 0.0000019,
 };
 const CVR_LOW = 0.05;
 const CVR_HIGH = 0.2;
@@ -476,7 +484,7 @@ export interface DownloadEstimate {
 export function estimateDownloads(popularity: number, country = "us"): DownloadEstimate {
   const searches = dailySearches(popularity) * (MARKET_SIZE[country.toLowerCase()] ?? MARKET_SIZE_DEFAULT);
   const positions: PositionEstimate[] = [];
-  for (let pos = 1; pos <= 20; pos++) {
+  for (let pos = 1; pos <= 50; pos++) {
     const ttr = TTR[pos] ?? 0.001;
     positions.push({
       pos,
