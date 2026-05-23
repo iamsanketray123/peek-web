@@ -200,6 +200,26 @@ export function estimatePopularity(competitors: Competitor[], keyword: string): 
   return Math.max(5, Math.min(100, total));
 }
 
+/**
+ * Weight of the autocomplete (real-search-behavior) signal vs. the competitive
+ * estimate when both are available. Both scores are 5–100.
+ */
+export const SUGGEST_WEIGHT = 0.5;
+
+/**
+ * Blend the competitive-inference popularity (from competitor data) with the
+ * App Store autocomplete signal (real user search behavior). Either may be null:
+ *   - both present → weighted average
+ *   - one present  → use it
+ *   - neither      → null
+ */
+export function blendPopularity(competitive: number | null, suggest: number | null): number | null {
+  if (competitive != null && suggest != null) {
+    return Math.round(competitive * (1 - SUGGEST_WEIGHT) + suggest * SUGGEST_WEIGHT);
+  }
+  return competitive ?? suggest;
+}
+
 // ───────────────────────── difficulty ─────────────────────────
 
 const DIFF_WEIGHTS = {

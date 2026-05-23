@@ -3,8 +3,10 @@
  * Used by the /api/keywords/analyze route (and reusable elsewhere).
  */
 import { searchApps, type Competitor } from "./itunes";
+import { suggestPopularity } from "./suggest";
 import {
   estimatePopularity,
+  blendPopularity,
   calcDifficulty,
   calcOpportunity,
   getTargeting,
@@ -46,12 +48,17 @@ export interface KeywordAnalysis {
 export async function analyzeKeyword(term: string, country = "us"): Promise<KeywordAnalysis> {
   const keyword = term.trim();
 
-  // Fetch 50 apps — more coverage means better scoring signal AND fewer
-  // "why is X missing?" surprises (iTunes returns a different 20 each call).
-  const competitors: Competitor[] = await searchApps(keyword, country, 50);
+  // Fetch 50 apps + the autocomplete popularity signal in parallel. More
+  // competitor coverage means better scoring signal AND fewer "why is X
+  // missing?" surprises (iTunes returns a different 20 each call).
+  const [competitors, suggest]: [Competitor[], number | null] = await Promise.all([
+    searchApps(keyword, country, 50),
+    suggestPopularity(keyword, country).catch(() => null),
+  ]);
 
-  // Scoring uses the full competitor set (all 50).
-  const popularity = estimatePopularity(competitors, keyword);
+  // Scoring uses the full competitor set (all 50), then blends the competitive
+  // estimate with the real-search-behavior autocomplete signal.
+  const popularity = blendPopularity(estimatePopularity(competitors, keyword), suggest);
   const diff = calcDifficulty(competitors, keyword);
   const opportunity = calcOpportunity(popularity ?? 0, diff.score);
   const targeting = getTargeting(popularity ?? 0, diff.score);

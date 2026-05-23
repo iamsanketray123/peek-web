@@ -12,7 +12,8 @@
  *   parsing without touching callers (see PLAN.md §6 risks).
  */
 import { searchApps, type Competitor } from "./itunes";
-import { estimatePopularity, calcDifficulty } from "./scoring";
+import { estimatePopularity, calcDifficulty, blendPopularity } from "./scoring";
+import { suggestPopularity } from "./suggest";
 
 // How deep we look for the app. The App Store search UI rarely surfaces apps
 // past ~200 for a query, so "not in top 200" ≈ "not ranked" for our purposes.
@@ -41,15 +42,22 @@ export async function computeKeywordMetrics(
   country = "us",
   competitorAppleIds?: string[],
 ): Promise<KeywordMetrics & { competitorPositions?: Record<string, number | null> }> {
-  const results: Competitor[] = await searchApps(term, country, RANK_DEPTH);
+  // Fetch competitor data + the autocomplete popularity signal in parallel.
+  // suggestPopularity already swallows its own errors (returns null), but guard
+  // anyway so a hint failure can never break metric computation.
+  const [results, suggest]: [Competitor[], number | null] = await Promise.all([
+    searchApps(term, country, RANK_DEPTH),
+    suggestPopularity(term, country).catch(() => null),
+  ]);
 
   const idNum = Number(appleId);
   const idx = results.findIndex((c) => c.trackId === idNum);
   const position = idx === -1 ? null : idx + 1;
 
-  // Score on the top 50 to match Keyword Explorer's basis.
+  // Score on the top 50 to match Keyword Explorer's basis, then blend the
+  // competitive estimate with the real-search-behavior autocomplete signal.
   const top = results.slice(0, 50);
-  const popularity = estimatePopularity(top, term);
+  const popularity = blendPopularity(estimatePopularity(top, term), suggest);
   const diff = calcDifficulty(top, term);
 
   const competitorPositions: Record<string, number | null> = {};
