@@ -851,11 +851,35 @@ export async function refreshAppRanks(appId: string): Promise<void> {
         }
       }
 
-      // Mark completed
-      await prisma.trackedApp.update({
-        where: { id: appId },
-        data: { seedStatus: "completed" },
-      });
+      // 1. Refresh app metadata (ratings, rating count, icon URL, genres, developer, name) for accuracy!
+      try {
+        const freshMeta = await lookupApp(app.appleId, app.country);
+        if (freshMeta) {
+          await prisma.trackedApp.update({
+            where: { id: appId },
+            data: {
+              name: freshMeta.trackName,
+              developer: freshMeta.sellerName,
+              iconUrl: freshMeta.artworkUrl100 || freshMeta.artworkUrl512,
+              avgRating: freshMeta.averageUserRating,
+              ratingCount: freshMeta.userRatingCount,
+              primaryGenre: freshMeta.primaryGenreName,
+              seedStatus: "completed",
+            }
+          });
+        } else {
+          await prisma.trackedApp.update({
+            where: { id: appId },
+            data: { seedStatus: "completed" },
+          });
+        }
+      } catch (metaErr) {
+        console.error("Failed to refresh app metadata in background:", metaErr);
+        await prisma.trackedApp.update({
+          where: { id: appId },
+          data: { seedStatus: "completed" },
+        });
+      }
     } catch (err) {
       console.error("Background refresh failed:", err);
       await prisma.trackedApp.update({
@@ -1154,5 +1178,73 @@ export async function generateOptimizedMetadata(
     subtitle,
     keywords: keywordString,
     explanation,
+  };
+}
+
+export interface GlobalRatingsResult {
+  aggregatedCount: number;
+  globalAvgRating: number;
+  breakdown: { country: string; name: string; ratingCount: number; avgRating: number }[];
+}
+
+/**
+ * High-accuracy multi-storefront ratings lookup.
+ * Asynchronously aggregates lifetime ratings count & weighted average star scores
+ * across the top 10 App Store country storefronts globally.
+ */
+export async function fetchGlobalRatings(appleId: string): Promise<GlobalRatingsResult> {
+  await requireUser(); // Ensure user is authenticated
+
+  const countries = [
+    { code: "us", name: "United States" },
+    { code: "cn", name: "China" },
+    { code: "jp", name: "Japan" },
+    { code: "gb", name: "United Kingdom" },
+    { code: "de", name: "Germany" },
+    { code: "fr", name: "France" },
+    { code: "kr", name: "South Korea" },
+    { code: "br", name: "Brazil" },
+    { code: "in", name: "India" },
+    { code: "ca", name: "Canada" },
+  ];
+
+  const results = await Promise.all(
+    countries.map(async (c) => {
+      try {
+        const meta = await lookupApp(appleId, c.code);
+        return {
+          country: c.code.toUpperCase(),
+          name: c.name,
+          ratingCount: meta?.userRatingCount ?? 0,
+          avgRating: meta?.averageUserRating ?? 0,
+        };
+      } catch (e) {
+        console.error(`Failed to fetch ratings lookup for ${c.code}:`, e);
+        return {
+          country: c.code.toUpperCase(),
+          name: c.name,
+          ratingCount: 0,
+          avgRating: 0,
+        };
+      }
+    })
+  );
+
+  let aggregatedCount = 0;
+  let weightedScoreSum = 0;
+
+  for (const r of results) {
+    aggregatedCount += r.ratingCount;
+    weightedScoreSum += r.avgRating * r.ratingCount;
+  }
+
+  const globalAvgRating = aggregatedCount > 0 
+    ? Math.round((weightedScoreSum / aggregatedCount) * 100) / 100 
+    : 0;
+
+  return {
+    aggregatedCount,
+    globalAvgRating,
+    breakdown: results.filter((r) => r.ratingCount > 0),
   };
 }

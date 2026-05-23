@@ -25,8 +25,10 @@ import {
   getTrackedApp,
   addCompetitorApp,
   removeCompetitorApp,
+  fetchGlobalRatings,
   type TrackedAppDTO,
   type AppKeywordDTO,
+  type GlobalRatingsResult,
 } from "@/app/actions/apps";
 import { MetricBar } from "@/components/MetricBar";
 import { compact } from "@/lib/format";
@@ -58,6 +60,26 @@ export default function AppDetail({
 
   // Global storefront localization state
   const [activeGlobalTerm, setActiveGlobalTerm] = useState<string | null>(null);
+
+  // Global ratings state
+  const [globalRatings, setGlobalRatings] = useState<GlobalRatingsResult | null>(null);
+  const [loadingGlobalRatings, setLoadingGlobalRatings] = useState(false);
+  const [showGlobalDropdown, setShowGlobalDropdown] = useState(false);
+
+  useEffect(() => {
+    if (!currentApp.appleId) return;
+    setLoadingGlobalRatings(true);
+    fetchGlobalRatings(currentApp.appleId)
+      .then((res) => {
+        setGlobalRatings(res);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch global ratings:", err);
+      })
+      .finally(() => {
+        setLoadingGlobalRatings(false);
+      });
+  }, [currentApp.appleId]);
 
   // Synchronize component state with fresh server props when layout/sidebar refreshes
   useEffect(() => {
@@ -245,9 +267,62 @@ export default function AppDetail({
             <span className="flex items-center gap-1">
               <Star size={12} className="fill-amber-400 text-amber-400" />
               <span className="text-white font-semibold">{currentApp.avgRating ? currentApp.avgRating.toFixed(1) : "—"}</span> ({compact(currentApp.ratingCount)})
+              <span className="uppercase text-[9px] font-mono text-faint ml-0.5">{currentApp.country} store</span>
             </span>
+
+            {/* Premium Global Ratings Aggregator Dropdown */}
+            {loadingGlobalRatings ? (
+              <span className="flex items-center gap-1 bg-surface-3/40 px-2 py-0.75 rounded-lg border border-line text-[10px] text-faint animate-pulse">
+                <Loader2 size={10} className="animate-spin text-lime" />
+                Loading Global Ratings...
+              </span>
+            ) : globalRatings && globalRatings.aggregatedCount > 0 ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowGlobalDropdown(!showGlobalDropdown)}
+                  className="flex items-center gap-1.5 rounded-lg border border-line bg-surface-3/60 px-2 py-0.75 text-[10px] text-white hover:border-lime/30 active:scale-[0.98] transition-all cursor-pointer font-medium hover:shadow-[0_0_10px_rgba(198,244,50,0.03)]"
+                  title="Click to view global storefront breakdown"
+                >
+                  <Globe size={11} className="text-lime shrink-0" />
+                  <span>
+                    Global Ratings: <span className="font-semibold text-lime">{globalRatings.globalAvgRating.toFixed(1)}★</span> ({compact(globalRatings.aggregatedCount)})
+                  </span>
+                </button>
+
+                {showGlobalDropdown && (
+                  <>
+                    {/* Invisible click-away overlay to dismiss dropdown */}
+                    <div 
+                      className="fixed inset-0 z-30" 
+                      onClick={() => setShowGlobalDropdown(false)}
+                    />
+                    <div className="absolute left-0 mt-2 z-40 w-64 rounded-xl border border-line bg-surface-2 p-3.5 shadow-2xl animate-scale-in border-lime/10">
+                      <h4 className="text-xs font-bold text-white mb-2 flex items-center justify-between">
+                        <span>Global Storefronts</span>
+                        <span className="text-[8px] font-mono text-faint uppercase tracking-wider">Top Markets</span>
+                      </h4>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {globalRatings.breakdown.map((b) => (
+                          <div key={b.country} className="flex items-center justify-between text-[11px] py-1 border-b border-line/30 last:border-0">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="uppercase font-mono bg-surface-3 text-[9px] px-1 py-0.25 rounded text-faint border border-line/45 shrink-0">{b.country}</span>
+                              <span className="truncate text-white/90 font-medium">{b.name}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 font-mono text-[10px]">
+                              <span className="text-white font-semibold">{b.avgRating.toFixed(1)}★</span>
+                              <span className="text-faint">({compact(b.ratingCount)})</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
+
             {currentApp.primaryGenre && <span>{currentApp.primaryGenre}</span>}
-            <span className="uppercase font-mono bg-surface-3/50 px-1 py-0.25 rounded border border-line/50 text-[10px] text-white font-bold">{currentApp.country}</span>
             <a
               href={storeUrl}
               target="_blank"
