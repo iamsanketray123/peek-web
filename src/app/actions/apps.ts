@@ -33,6 +33,7 @@ export interface TrackedAppDTO {
   keywordCount: number;
   createdAt: string;
   seedStatus: string;
+  lastCheckedAt: string | null;
   competitors?: CompetitorAppDTO[];
 }
 
@@ -77,6 +78,7 @@ function appToDTO(a: {
   createdAt: Date;
   seedStatus: string;
   _count?: { keywords: number };
+  keywords?: { metricsUpdatedAt: Date | null }[];
   competitors?: {
     id: string;
     appleId: string;
@@ -86,6 +88,11 @@ function appToDTO(a: {
     createdAt: Date;
   }[];
 }): TrackedAppDTO {
+  // Most recent metricsUpdatedAt across all keywords = when data was last refreshed.
+  const lastChecked = a.keywords
+    ?.map((k) => k.metricsUpdatedAt?.getTime() ?? 0)
+    .reduce((max, t) => (t > max ? t : max), 0) ?? 0;
+
   return {
     id: a.id,
     appleId: a.appleId,
@@ -101,6 +108,7 @@ function appToDTO(a: {
     keywordCount: a._count?.keywords ?? 0,
     createdAt: a.createdAt.toISOString(),
     seedStatus: a.seedStatus,
+    lastCheckedAt: lastChecked > 0 ? new Date(lastChecked).toISOString() : null,
     competitors: a.competitors?.map((c) => ({
       id: c.id,
       appleId: c.appleId,
@@ -616,7 +624,10 @@ export async function listTrackedApps(): Promise<TrackedAppDTO[]> {
   const rows = await prisma.trackedApp.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: "desc" },
-    include: { _count: { select: { keywords: true } } },
+    include: {
+      _count: { select: { keywords: true } },
+      keywords: { select: { metricsUpdatedAt: true } },
+    },
   });
   return rows.map(appToDTO);
 }

@@ -3,9 +3,21 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Smartphone, Plus, Loader2, Trash2, Star, ChevronRight } from "lucide-react";
+import { Smartphone, Plus, Loader2, Trash2, Star, ChevronRight, Clock } from "lucide-react";
 import { addTrackedApp, removeTrackedApp, type TrackedAppDTO } from "@/app/actions/apps";
 import { compact, COUNTRIES } from "@/lib/format";
+
+function fmtAgo(iso: string | null): string | null {
+  if (!iso) return null;
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
 
 export default function AppsManager({ initialApps }: { initialApps: TrackedAppDTO[] }) {
   const [apps, setApps] = useState<TrackedAppDTO[]>(initialApps);
@@ -135,9 +147,22 @@ export default function AppsManager({ initialApps }: { initialApps: TrackedAppDT
                       <span className="text-faint/70">({compact(app.ratingCount)})</span>
                     </span>
                     <span className="text-muted">
-                      {app.keywordCount} keyword{app.keywordCount === 1 ? "" : "s"}
+                      {app.keywordCount} kw{app.keywordCount === 1 ? "" : "s"}
                     </span>
                     <span className="uppercase text-faint font-semibold">{app.country}</span>
+                    {(() => {
+                      const ago = fmtAgo(app.lastCheckedAt);
+                      if (!ago) return null;
+                      const isStale = app.lastCheckedAt
+                        ? Date.now() - new Date(app.lastCheckedAt).getTime() > 3 * 86_400_000
+                        : false;
+                      return (
+                        <span className={`flex items-center gap-1 ${isStale ? "text-amber-400" : "text-faint"}`}>
+                          <Clock size={10} />
+                          {ago}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               </Link>
