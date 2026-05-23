@@ -36,7 +36,7 @@ export default function KeywordExplorer({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<KeywordAnalysis | null>(null);
   const [modalApps, setModalApps] = useState<RankedApp[] | null>(null);
-  const [appSort, setAppSort] = useState<"rank" | "rated">("rank");
+  const [appSort, setAppSort] = useState<"rank" | "rated">("rated");
   const [saved, setSaved] = useState<SavedKeywordDTO[]>(initialSaved);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
