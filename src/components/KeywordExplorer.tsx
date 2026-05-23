@@ -36,6 +36,7 @@ export default function KeywordExplorer({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<KeywordAnalysis | null>(null);
   const [modalApps, setModalApps] = useState<RankedApp[] | null>(null);
+  const [appSort, setAppSort] = useState<"rank" | "rated">("rank");
   const [saved, setSaved] = useState<SavedKeywordDTO[]>(initialSaved);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -319,17 +320,34 @@ export default function KeywordExplorer({
                   <h2 className="text-sm font-semibold">
                     Top apps for <span className="text-lime">&ldquo;{result.keyword}&rdquo;</span>
                   </h2>
-                  {result.apps.length > 0 && (
-                    <button onClick={() => setModalApps(result.apps)} className="text-xs text-muted hover:text-white">
-                      View all
-                    </button>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {/* Sort toggle */}
+                    <div className="flex items-center rounded-lg border border-line bg-surface-2 p-0.5 text-xs">
+                      <button
+                        onClick={() => setAppSort("rank")}
+                        className={`rounded-md px-2.5 py-1 transition-colors ${appSort === "rank" ? "bg-surface-3 text-white" : "text-muted hover:text-white"}`}
+                      >
+                        Search rank
+                      </button>
+                      <button
+                        onClick={() => setAppSort("rated")}
+                        className={`rounded-md px-2.5 py-1 transition-colors ${appSort === "rated" ? "bg-surface-3 text-white" : "text-muted hover:text-white"}`}
+                      >
+                        Best rated
+                      </button>
+                    </div>
+                    {result.apps.length > 0 && (
+                      <button onClick={() => setModalApps(result.apps)} className="text-xs text-muted hover:text-white">
+                        View all
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {result.apps.length === 0 ? (
                   <p className="px-5 py-8 text-center text-sm text-muted">No ranking apps found.</p>
                 ) : (
                   <ul className="divide-y divide-line">
-                    {result.apps.slice(0, 10).map((app) => (
+                    {sortApps(result.apps, appSort).slice(0, 10).map((app) => (
                       <AppRow key={app.trackId} app={app} />
                     ))}
                   </ul>
@@ -337,7 +355,9 @@ export default function KeywordExplorer({
               </section>
 
               <p className="pb-4 text-center text-xs text-faint">
-                Apps sorted by search rank. All metrics are estimates from the public iTunes Search API.
+                {appSort === "rank"
+                  ? "Apps sorted by Apple search rank. All metrics are estimates from the public iTunes Search API."
+                  : "Apps sorted by rating quality (rating × volume). All metrics are estimates from the public iTunes Search API."}
               </p>
             </div>
           ) : null}
@@ -345,7 +365,7 @@ export default function KeywordExplorer({
       </div>
 
       {modalApps && (
-        <AppsModal keyword={result?.keyword ?? ""} apps={modalApps} onClose={() => setModalApps(null)} />
+        <AppsModal keyword={result?.keyword ?? ""} apps={sortApps(modalApps, appSort)} onClose={() => setModalApps(null)} />
       )}
 
       {/* Toast notification */}
@@ -374,6 +394,16 @@ function MetricCard({ label, big, children }: { label: string; big: React.ReactN
       {children}
     </div>
   );
+}
+
+/** Quality score: balances star rating with volume so a 4.7/10k beats a 5.0/1. */
+function qualityScore(app: RankedApp): number {
+  return app.rating * Math.log10(app.ratingCount + 10);
+}
+
+function sortApps(apps: RankedApp[], order: "rank" | "rated"): RankedApp[] {
+  if (order === "rank") return apps;
+  return [...apps].sort((a, b) => qualityScore(b) - qualityScore(a));
 }
 
 function AppRow({ app }: { app: RankedApp }) {
