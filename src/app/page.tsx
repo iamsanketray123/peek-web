@@ -1,7 +1,4 @@
 import { redirect } from "next/navigation";
-import KeywordExplorer from "@/components/KeywordExplorer";
-import { getUser } from "@/lib/supabase/server";
-import { listSavedKeywords } from "@/app/actions/keywords";
 
 export default async function Home({
   searchParams,
@@ -17,8 +14,5 @@ export default async function Home({
     redirect(`/auth/callback?code=${encodeURIComponent(code)}`);
   }
 
-  const user = await getUser();
-  const saved = user ? await listSavedKeywords() : [];
-
-  return <KeywordExplorer isAuthed={!!user} initialSaved={saved} />;
+  redirect("/apps");
 }
