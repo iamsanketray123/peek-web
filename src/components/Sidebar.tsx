@@ -40,7 +40,7 @@ const SECTIONS: NavSection[] = [
   {
     title: "ASO",
     items: [
-      { label: "Keyword Explorer", href: "/", icon: Search, ready: true },
+      { label: "Keyword Explorer", href: "/keywords", icon: Search, ready: true },
       { label: "App Tracking", href: "/apps", icon: Smartphone, ready: true },
     ],
   },
@@ -75,9 +75,7 @@ export default function Sidebar({ userEmail }: { userEmail: string | null }) {
               {section.items.map((item) => {
                 const active =
                   item.ready &&
-                  (item.href === "/"
-                    ? pathname === "/"
-                    : pathname === item.href || pathname.startsWith(item.href + "/"));
+                  (pathname === item.href || pathname.startsWith(item.href + "/"));
                 const Icon = item.icon;
                 return (
                   <li key={item.label}>
