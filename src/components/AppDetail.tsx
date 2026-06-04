@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -33,6 +33,7 @@ import {
 import { MetricBar } from "@/components/MetricBar";
 import { compact } from "@/lib/format";
 import RankChart from "@/components/RankChart";
+import AppKeywordTrendPanel from "@/components/AppKeywordTrendPanel";
 
 type Tab = "keywords" | "history" | "optimizer";
 
@@ -49,6 +50,7 @@ export default function AppDetail({
   const [tab, setTab] = useState<Tab>("keywords");
   const [term, setTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [expandedTrendId, setExpandedTrendId] = useState<string | null>(null);
   const [adding, startAdd] = useTransition();
   const [refreshing, startRefresh] = useTransition();
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -597,7 +599,8 @@ export default function AppDetail({
                     </thead>
                     <tbody className="divide-y divide-line/40">
                       {sortedKeywords.map((k) => (
-                        <tr key={k.id} className="group border-b border-line/60 last:border-0 hover:bg-surface/40 transition-colors duration-150">
+                        <Fragment key={k.id}>
+                          <tr className="group border-b border-line/60 last:border-0 hover:bg-surface/40 transition-colors duration-150">
                           <td className="px-5 py-4 font-medium text-white">
                             <div className="flex items-center gap-2">
                               <span>{k.term}</span>
@@ -638,7 +641,17 @@ export default function AppDetail({
                             </div>
                           </td>
                           <td className="px-5 py-4">
-                            <RankChart history={k.history} width={72} height={26} />
+                            <button
+                              type="button"
+                              onClick={() => setExpandedTrendId(prev => prev === k.id ? null : k.id)}
+                              className={[
+                                "focus:outline-none hover:opacity-85 transition-all cursor-pointer block active:scale-95 p-1 rounded hover:bg-surface-3/50",
+                                expandedTrendId === k.id ? "bg-lime/10 ring-1 ring-lime/20" : ""
+                              ].join(" ")}
+                              title="Click to view detailed trend history"
+                            >
+                              <RankChart history={k.history} width={72} height={26} />
+                            </button>
                           </td>
                           <td className="px-5 py-4 text-right">
                             <button
@@ -655,8 +668,26 @@ export default function AppDetail({
                             </button>
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
+                        {expandedTrendId === k.id && (
+                          <tr className="bg-surface/30">
+                            <td
+                              colSpan={6 + (currentApp.competitors?.length ?? 0)}
+                              className="px-5 py-4 border-t border-line/30"
+                            >
+                              <AppKeywordTrendPanel
+                                appKeywordId={k.id}
+                                term={k.term}
+                                onClose={() => setExpandedTrendId(null)}
+                                competitors={currentApp.competitors ?? []}
+                                appName={currentApp.name}
+                                appIconUrl={currentApp.iconUrl}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
                   </table>
                 </div>
               )}

@@ -809,6 +809,67 @@ export async function removeAppKeyword(id: string): Promise<void> {
   revalidatePath(`/apps/${kw.appId}`);
 }
 
+export interface AppTrendPointDTO {
+  date: string;
+  position: number | null;
+  competitors: Record<string, number | null>; // appleId -> position
+}
+
+/**
+ * Fetch detailed rank position history for the main app and all competitors
+ * for a specific app keyword. Used for interactive trend charts.
+ */
+export async function getAppKeywordTrend(
+  appKeywordId: string
+): Promise<AppTrendPointDTO[]> {
+  const user = await requireUser();
+
+  const kw = await prisma.appKeyword.findUnique({
+    where: { id: appKeywordId },
+    include: {
+      app: true,
+      snapshots: {
+        orderBy: { checkedAt: "asc" },
+      },
+      competitorSnapshots: {
+        orderBy: { checkedAt: "asc" },
+        include: { competitor: true },
+      },
+    },
+  });
+
+  if (!kw || kw.app.userId !== user.id) {
+    throw new Error("Keyword not found or access denied.");
+  }
+
+  // Group snapshots by date (UTC YYYY-MM-DD)
+  const timeline: Record<string, { position: number | null; competitors: Record<string, number | null> }> = {};
+
+  for (const snap of kw.snapshots) {
+    const dateStr = snap.checkedAt.toISOString().slice(0, 10);
+    if (!timeline[dateStr]) {
+      timeline[dateStr] = { position: null, competitors: {} };
+    }
+    timeline[dateStr].position = snap.position;
+  }
+
+  for (const snap of kw.competitorSnapshots) {
+    const dateStr = snap.checkedAt.toISOString().slice(0, 10);
+    if (!timeline[dateStr]) {
+      timeline[dateStr] = { position: null, competitors: {} };
+    }
+    timeline[dateStr].competitors[snap.competitor.appleId] = snap.position;
+  }
+
+  const sortedDates = Object.keys(timeline).sort();
+  return sortedDates.map((date) => ({
+    date,
+    position: timeline[date].position,
+    competitors: timeline[date].competitors,
+  }));
+}
+
+
 /**
  * Re-check ranks for every keyword of an app and record fresh snapshots.
  * Used by the manual "Refresh" button (the daily cron does the same for all apps).
