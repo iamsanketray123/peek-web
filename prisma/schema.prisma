@@ -24,9 +24,24 @@ model SavedKeyword {
   classification String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  metricSnapshots KeywordMetricSnapshot[]
 
   @@unique([userId, term, country])
   @@index([userId])
+}
+
+/// A point-in-time snapshot of keyword metrics (popularity, difficulty, opportunity).
+/// Collected daily by the cron job and on each user search, building trend data.
+model KeywordMetricSnapshot {
+  id              String       @id @default(cuid())
+  savedKeywordId  String
+  savedKeyword    SavedKeyword @relation(fields: [savedKeywordId], references: [id], onDelete: Cascade)
+  popularity      Int?
+  difficulty      Int?
+  opportunity     Int?
+  capturedAt      DateTime     @default(now())
+
+  @@index([savedKeywordId, capturedAt])
 }
 
 /// An App Store app a user is tracking (Phase 3 — App Tracking).

@@ -454,15 +454,28 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
     addBucket(bucket5);
 
     // Validate the top candidates (cap protects Apple's Search API rate limits).
-    const termsToCheck = Array.from(allCandidatesOrdered).slice(0, 26);
+    // Increased to 100 to yield at least 50 strong candidates
+    const termsToCheck = Array.from(allCandidatesOrdered).slice(0, 100);
 
     // ── Step 5: Parallel Metric Compilation & Smart Selection ────────────────────
-    const results = await Promise.allSettled(
-      termsToCheck.map(async (term) => {
-        const metrics = await computeKeywordMetrics(app.appleId, term, app.country);
-        return { term, metrics };
-      })
-    );
+    const results: PromiseSettledResult<{ term: string; metrics: Awaited<ReturnType<typeof computeKeywordMetrics>> }>[] = [];
+    
+    // Chunking to avoid rate limits (batch size of 5)
+    for (let i = 0; i < termsToCheck.length; i += 5) {
+      const chunk = termsToCheck.slice(i, i + 5);
+      const chunkResults = await Promise.allSettled(
+        chunk.map(async (term) => {
+          const metrics = await computeKeywordMetrics(app.appleId, term, app.country);
+          return { term, metrics };
+        })
+      );
+      results.push(...chunkResults);
+      
+      // Delay between chunks to prevent Apple from banning the IP temporarily
+      if (i + 5 < termsToCheck.length) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+    }
 
     // Collect terms matching ASO search-volume criteria:
     // popularity >= 20, OR a real ranking term with some volume (pop >= 14 AND ranked in top 150).
@@ -497,8 +510,8 @@ async function seedKeywordsForApp(appId: string): Promise<void> {
       if (leadCounts[lead] <= 3) diversified.push(v);
     }
 
-    // Take the top 22 highest-value, diversified keywords.
-    const finalKeywords = diversified.slice(0, 22);
+    // Take the top 50 highest-value, diversified keywords.
+    const finalKeywords = diversified.slice(0, 50);
 
     // ── Step 6: Persist Seeding to Database ─────────────────────────────────────────
     await Promise.allSettled(

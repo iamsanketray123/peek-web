@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Search, Loader2, ExternalLink, X, Star, Trash2, Bookmark, CheckCircle2 } from "lucide-react";
+import { Search, Loader2, ExternalLink, X, Star, Trash2, Bookmark, CheckCircle2, TrendingUp } from "lucide-react";
 import type { KeywordAnalysis, RankedApp } from "@/lib/aso/analyze";
 import { MetricBar } from "@/components/MetricBar";
 import { compact, dlRange, COUNTRIES } from "@/lib/format";
@@ -12,6 +12,7 @@ import {
   removeSavedKeyword,
   type SavedKeywordDTO,
 } from "@/app/actions/keywords";
+import KeywordTrendPanel from "@/components/KeywordTrendPanel";
 
 const CLASS_STYLES: Record<string, string> = {
   "Sweet Spot": "bg-green-500/15 text-green-300 border-green-500/30",
@@ -39,6 +40,7 @@ export default function KeywordExplorer({
   const [appSort, setAppSort] = useState<"rank" | "rated">("rated");
   const [saved, setSaved] = useState<SavedKeywordDTO[]>(initialSaved);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [expandedTrendId, setExpandedTrendId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   function showToast(msg: string, ok = true) {
@@ -194,37 +196,69 @@ export default function KeywordExplorer({
             ) : (
               <ul className="max-h-[600px] divide-y divide-line/40 overflow-y-auto">
                 {saved.map((s) => (
-                  <li key={s.id} className="group flex items-center gap-3 px-4 py-3 hover:bg-surface-2/40 transition-colors">
-                    <button
-                      onClick={() => openSaved(s)}
-                      className="min-w-0 flex-1 text-left active:scale-[0.98] transition-transform duration-100 cursor-pointer"
-                    >
-                      <div className="flex flex-col gap-1.5">
-                        <p className="truncate text-sm font-semibold text-white group-hover:text-lime transition-colors duration-200">
-                          {s.term}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                          <span className="rounded border border-line bg-surface-3/40 px-1.5 py-0.25 font-mono text-[9px] font-bold tracking-wider text-muted uppercase">
-                            {s.country}
-                          </span>
-                          <span className="flex items-center gap-1 text-[11px] font-medium text-muted">
-                            <span className="h-1.5 w-1.5 rounded-full bg-lime/80 shadow-[0_0_8px_rgba(198,244,50,0.5)]" />
-                            Pop <span className="font-mono font-semibold text-white">{s.popularity ?? "—"}</span>
-                          </span>
-                          <span className="flex items-center gap-1 text-[11px] font-medium text-muted">
-                            <span className={`h-1.5 w-1.5 rounded-full ${s.difficulty ? (s.difficulty <= 35 ? "bg-green-400" : s.difficulty <= 65 ? "bg-amber-400" : "bg-red-400") : "bg-faint"}`} />
-                            Diff <span className={`font-mono font-semibold ${s.difficulty ? (s.difficulty <= 35 ? "text-green-400" : s.difficulty <= 65 ? "text-amber-400" : "text-red-400") : "text-faint"}`}>{s.difficulty ?? "—"}</span>
-                          </span>
+                  <li key={s.id} className="group">
+                    <div className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2/40 transition-colors">
+                      <button
+                        onClick={() => openSaved(s)}
+                        className="min-w-0 flex-1 text-left active:scale-[0.98] transition-transform duration-100 cursor-pointer"
+                      >
+                        <div className="flex flex-col gap-1.5">
+                          <p className="truncate text-sm font-semibold text-white group-hover:text-lime transition-colors duration-200">
+                            {s.term}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                            <span className="rounded border border-line bg-surface-3/40 px-1.5 py-0.25 font-mono text-[9px] font-bold tracking-wider text-muted uppercase">
+                              {s.country}
+                            </span>
+                            <span className="flex items-center gap-1 text-[11px] font-medium text-muted">
+                              <span className="h-1.5 w-1.5 rounded-full bg-lime/80 shadow-[0_0_8px_rgba(198,244,50,0.5)]" />
+                              Pop <span className="font-mono font-semibold text-white">{s.popularity ?? "—"}</span>
+                            </span>
+                            <span className="flex items-center gap-1 text-[11px] font-medium text-muted">
+                              <span className={`h-1.5 w-1.5 rounded-full ${s.difficulty ? (s.difficulty <= 35 ? "bg-green-400" : s.difficulty <= 65 ? "bg-amber-400" : "bg-red-400") : "bg-faint"}`} />
+                              Diff <span className={`font-mono font-semibold ${s.difficulty ? (s.difficulty <= 35 ? "text-green-400" : s.difficulty <= 65 ? "text-amber-400" : "text-red-400") : "text-faint"}`}>{s.difficulty ?? "—"}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() =>
+                          setExpandedTrendId((prev) =>
+                            prev === s.id ? null : s.id
+                          )
+                        }
+                        className={[
+                          "p-1.5 rounded transition-all cursor-pointer shrink-0 active:scale-90",
+                          expandedTrendId === s.id
+                            ? "text-lime bg-lime/10"
+                            : s.hasSnapshots
+                              ? "text-lime/70 opacity-0 group-hover:opacity-100 hover:bg-lime/10"
+                              : "text-faint opacity-0 group-hover:opacity-100 hover:bg-surface-3",
+                        ].join(" ")}
+                        title="View trend"
+                      >
+                        <TrendingUp size={14} />
+                      </button>
+                      <button
+                        onClick={() => removeOne(s.id)}
+                        className="text-faint opacity-0 transition group-hover:opacity-100 hover:text-red-400 p-1.5 rounded hover:bg-surface-3 cursor-pointer shrink-0 active:scale-90"
+                        title="Remove"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    {/* Expanded Trend Panel */}
+                    {expandedTrendId === s.id && (
+                      <div className="px-4 pb-4 border-t border-line/30 bg-surface/30">
+                        <div className="pt-3">
+                          <KeywordTrendPanel
+                            savedKeywordId={s.id}
+                            term={s.term}
+                            onClose={() => setExpandedTrendId(null)}
+                          />
                         </div>
                       </div>
-                    </button>
-                    <button
-                      onClick={() => removeOne(s.id)}
-                      className="text-faint opacity-0 transition group-hover:opacity-100 hover:text-red-400 p-1.5 rounded hover:bg-surface-3 cursor-pointer shrink-0 active:scale-90"
-                      title="Remove"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    )}
                   </li>
                 ))}
               </ul>
