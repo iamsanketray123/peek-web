@@ -118,16 +118,28 @@ export default function LoginPage() {
                 placeholder="you@example.com"
                 className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition-all duration-200 focus:border-lime/80 focus:ring-2 focus:ring-lime/10 disabled:opacity-50"
               />
-              <input
-                type="password"
-                required
-                minLength={6}
-                disabled={loading}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password (min 6 chars)"
-                className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition-all duration-200 focus:border-lime/80 focus:ring-2 focus:ring-lime/10 disabled:opacity-50"
-              />
+              <div className="space-y-1">
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  disabled={loading}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password (min 6 chars)"
+                  className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition-all duration-200 focus:border-lime/80 focus:ring-2 focus:ring-lime/10 disabled:opacity-50"
+                />
+                {mode === "signin" && (
+                  <div className="flex justify-end">
+                    <Link
+                      href="/forgot-password"
+                      className="text-xs text-muted hover:text-lime transition-colors duration-150"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
+                )}
+              </div>
               <button
                 type="submit"
                 disabled={loading}
