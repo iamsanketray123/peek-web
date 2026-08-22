@@ -71,9 +71,16 @@ export default function AppDetail({
   useEffect(() => {
     if (!currentApp.appleId) return;
     setLoadingGlobalRatings(true);
-    fetchGlobalRatings(currentApp.appleId)
+    fetchGlobalRatings(currentApp.appleId, currentApp.country)
       .then((res) => {
         setGlobalRatings(res);
+        if (res.currentStoreRating) {
+          setCurrentApp((prev) => ({
+            ...prev,
+            ratingCount: res.currentStoreRating!.ratingCount,
+            avgRating: res.currentStoreRating!.avgRating,
+          }));
+        }
       })
       .catch((err) => {
         console.error("Failed to fetch global ratings:", err);
@@ -81,11 +88,18 @@ export default function AppDetail({
       .finally(() => {
         setLoadingGlobalRatings(false);
       });
-  }, [currentApp.appleId]);
+  }, [currentApp.appleId, currentApp.country]);
 
   // Synchronize component state with fresh server props when layout/sidebar refreshes
   useEffect(() => {
-    setCurrentApp(app);
+    setCurrentApp((prev) => {
+      if (prev.id !== app.id) return app;
+      return {
+        ...app,
+        ratingCount: Math.max(prev.ratingCount ?? 0, app.ratingCount ?? 0),
+        avgRating: prev.avgRating || app.avgRating,
+      };
+    });
   }, [app]);
 
   useEffect(() => {
@@ -173,6 +187,17 @@ export default function AppDetail({
         if (fresh) {
           setCurrentApp(fresh.app);
           setKeywords(fresh.keywords);
+        }
+        if (currentApp.appleId) {
+          const res = await fetchGlobalRatings(currentApp.appleId, currentApp.country);
+          setGlobalRatings(res);
+          if (res.currentStoreRating) {
+            setCurrentApp((prev) => ({
+              ...prev,
+              ratingCount: res.currentStoreRating!.ratingCount,
+              avgRating: res.currentStoreRating!.avgRating,
+            }));
+          }
         }
       } catch (err) {
         setError((err as Error).message);

@@ -40,6 +40,8 @@ interface RawResult {
   primaryGenreName?: string;
   userRatingCount?: number;
   averageUserRating?: number;
+  userRatingCountForCurrentVersion?: number;
+  averageUserRatingForCurrentVersion?: number;
   releaseDate?: string;
   price?: number;
   formattedPrice?: string;
@@ -67,8 +69,8 @@ function normalize(r: RawResult): Competitor {
     artworkUrl100: r.artworkUrl100,
     artworkUrl512: r.artworkUrl512 ?? r.artworkUrl100,
     primaryGenreName: r.primaryGenreName,
-    userRatingCount: r.userRatingCount ?? 0,
-    averageUserRating: r.averageUserRating ?? 0,
+    userRatingCount: r.userRatingCount ?? r.userRatingCountForCurrentVersion ?? 0,
+    averageUserRating: r.averageUserRating ?? r.averageUserRatingForCurrentVersion ?? 0,
     releaseDate: r.releaseDate,
     price: r.price,
     formattedPrice: r.formattedPrice,
@@ -81,12 +83,12 @@ function normalize(r: RawResult): Competitor {
 
 export class ITunesError extends Error {}
 
-async function fetchJson(url: string): Promise<ITunesResponse> {
+async function fetchJson(url: string, revalidate: number = CACHE_SECONDS): Promise<ITunesResponse> {
   let res: Response;
   try {
     res = await fetch(url, {
       headers: { "User-Agent": "PeekWeb/0.1 (+aso research)" },
-      next: { revalidate: CACHE_SECONDS },
+      next: { revalidate },
     });
   } catch (e) {
     throw new ITunesError(`Network error contacting iTunes: ${(e as Error).message}`);
@@ -128,11 +130,12 @@ export async function searchApps(
 export async function lookupApp(
   appleId: string,
   country = "us",
+  revalidate: number = 60,
 ): Promise<Competitor | null> {
   const url =
     "https://itunes.apple.com/lookup?" +
     new URLSearchParams({ id: appleId, country }).toString();
-  const data = await fetchJson(url);
+  const data = await fetchJson(url, revalidate);
   const first = data.results[0];
   return first ? normalize(first) : null;
 }

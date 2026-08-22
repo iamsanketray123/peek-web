@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getUser } from "@/lib/supabase/server";
 import { lookupApp, searchApps, extractAppleId } from "@/lib/aso/itunes";
 import { computeKeywordMetrics, findAppRank } from "@/lib/aso/rank";
+import { COUNTRIES } from "@/lib/format";
 
 // ── DTOs ──────────────────────────────────────────────────────────────────
 
@@ -1259,17 +1260,21 @@ export interface GlobalRatingsResult {
   aggregatedCount: number;
   globalAvgRating: number;
   breakdown: { country: string; name: string; ratingCount: number; avgRating: number }[];
+  currentStoreRating?: { ratingCount: number; avgRating: number };
 }
 
 /**
  * High-accuracy multi-storefront ratings lookup.
  * Asynchronously aggregates lifetime ratings count & weighted average star scores
- * across the top 10 App Store country storefronts globally.
+ * across the top App Store country storefronts globally and syncs the home storefront.
  */
-export async function fetchGlobalRatings(appleId: string): Promise<GlobalRatingsResult> {
-  await requireUser(); // Ensure user is authenticated
+export async function fetchGlobalRatings(
+  appleId: string,
+  currentCountry = "us"
+): Promise<GlobalRatingsResult> {
+  const user = await requireUser(); // Ensure user is authenticated
 
-  const countries = [
+  const baseCountries = [
     { code: "us", name: "United States" },
     { code: "cn", name: "China" },
     { code: "jp", name: "Japan" },
@@ -1282,10 +1287,20 @@ export async function fetchGlobalRatings(appleId: string): Promise<GlobalRatings
     { code: "ca", name: "Canada" },
   ];
 
+  const currentCode = (currentCountry || "us").toLowerCase();
+  const countryList = [...baseCountries];
+  if (!countryList.some((c) => c.code.toLowerCase() === currentCode)) {
+    const matchedCountry = COUNTRIES.find((c) => c.code.toLowerCase() === currentCode);
+    countryList.push({
+      code: currentCode,
+      name: matchedCountry?.name || currentCode.toUpperCase(),
+    });
+  }
+
   const results = await Promise.all(
-    countries.map(async (c) => {
+    countryList.map(async (c) => {
       try {
-        const meta = await lookupApp(appleId, c.code);
+        const meta = await lookupApp(appleId, c.code, 60);
         return {
           country: c.code.toUpperCase(),
           name: c.name,
@@ -1316,9 +1331,30 @@ export async function fetchGlobalRatings(appleId: string): Promise<GlobalRatings
     ? Math.round((weightedScoreSum / aggregatedCount) * 100) / 100 
     : 0;
 
+  const currentStoreMatch = results.find((r) => r.country.toLowerCase() === currentCode);
+  const currentStoreRating = currentStoreMatch
+    ? { ratingCount: currentStoreMatch.ratingCount, avgRating: currentStoreMatch.avgRating }
+    : undefined;
+
+  // Persist updated ratings to DB for the tracked app so subsequent SSR loads are accurate
+  if (currentStoreMatch) {
+    try {
+      await prisma.trackedApp.updateMany({
+        where: { userId: user.id, appleId, country: currentCode },
+        data: {
+          ratingCount: currentStoreMatch.ratingCount,
+          avgRating: currentStoreMatch.avgRating,
+        },
+      });
+    } catch (e) {
+      console.error("Failed to update tracked app ratings in DB:", e);
+    }
+  }
+
   return {
     aggregatedCount,
     globalAvgRating,
     breakdown: results.filter((r) => r.ratingCount > 0),
+    currentStoreRating,
   };
 }
