@@ -254,7 +254,9 @@ export default function ReviewsExplorer({
           {/* Review list */}
           {visible.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line bg-surface/40 px-6 py-12 text-center text-sm text-muted">
-              No reviews match this filter.
+              {result.reviews.length === 0
+                ? `Apple returned no written reviews for the ${result.app.country.toUpperCase()} storefront. Star ratings do not always include a written review. Try another country if you saw reviews elsewhere.`
+                : "No reviews match this filter."}
             </div>
           ) : (
             <ul className="space-y-3">
@@ -265,8 +267,10 @@ export default function ReviewsExplorer({
           )}
 
           <p className="pb-4 text-center text-xs text-faint">
-            Shows up to ~{result.reviews.length} most-recent reviews from the {result.app.country.toUpperCase()} App Store
-            (Apple&apos;s public RSS feed). The breakdown reflects recent sentiment, not the app&apos;s lifetime rating.
+            {result.reviews.some((r) => r.source === "app-store-page")
+              ? `Showing ${result.reviews.length} written reviews available on the ${result.app.country.toUpperCase()} App Store page because Apple's RSS feed is empty. This may be a limited selection, not all reviews or the most recent reviews.`
+              : `Showing ${result.reviews.length} recent reviews from the ${result.app.country.toUpperCase()} App Store public RSS feed.`}
+            {" "}The breakdown reflects fetched written reviews, not the app&apos;s lifetime rating.
           </p>
         </div>
       )}
@@ -398,7 +402,7 @@ function SentimentPanel({
           <Stars rating={summary.average} size={15} />
         </div>
         <p className="mt-2 text-xs text-muted">
-          across {summary.count} recent review{summary.count === 1 ? "" : "s"}
+          across {summary.count} fetched review{summary.count === 1 ? "" : "s"}
         </p>
         <p className="mt-0.5 text-[11px] text-faint">
           Lifetime: {app.avgRating ? app.avgRating.toFixed(1) : "—"} ({compact(app.ratingCount)})

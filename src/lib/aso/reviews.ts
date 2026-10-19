@@ -19,6 +19,8 @@ import { ITunesError } from "./itunes";
 
 /** Normalized review used by the API + UI. */
 export interface Review {
+  /** Public page fallback is a limited selection, not the recent RSS window. */
+  source?: "app-store-page";
   id: string;
   author: string;
   /** 1–5 stars. */
@@ -87,6 +89,56 @@ const CACHE_SECONDS = 60 * 30;
 const PER_PAGE = 50;
 /** Apple's feed tops out around 10 pages (~500 reviews). */
 const DEFAULT_MAX_PAGES = 6;
+
+/** Read Apple's structured page data, never execute scripts from the page. */
+export function parseAppStoreReviews(html: string): Review[] {
+  const script = html.match(/<script\b[^>]*\bid=["']serialized-server-data["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!script) throw new ITunesError("Apple's review page format changed. Please try again later.");
+  let data: unknown;
+  try {
+    data = JSON.parse(script[1]);
+  } catch {
+    throw new ITunesError("Apple returned unreadable review data. Please try again later.");
+  }
+  const reviews: Review[] = [];
+  function visit(value: unknown) {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    const entry = value as Record<string, unknown>;
+    if (entry.$kind === "Review") {
+      const rating = Number(entry.rating);
+      if (typeof entry.id === "string" && Number.isInteger(rating) && rating >= 1 && rating <= 5 && typeof entry.contents === "string") {
+        reviews.push({
+          id: entry.id,
+          author: typeof entry.reviewerName === "string" ? entry.reviewerName : "Anonymous",
+          rating,
+          title: typeof entry.title === "string" ? entry.title : "",
+          content: entry.contents,
+          updated: typeof entry.date === "string" ? entry.date : "",
+          version: null,
+          voteSum: 0,
+          voteCount: 0,
+          source: "app-store-page",
+        });
+      }
+      return;
+    }
+    // Recommendation shelves contain other apps, not reviews for this app.
+    if (entry.$kind === "Lockup") return;
+    Object.values(entry).forEach(visit);
+  }
+  visit(data);
+  return dedupe(reviews);
+}
+
+async function fetchPageReviews(id: string, country: string): Promise<Review[]> {
+  const res = await fetch(`https://apps.apple.com/${encodeURIComponent(country)}/app/id${encodeURIComponent(id)}`, {
+    next: { revalidate: CACHE_SECONDS },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new ITunesError(`Apple review page returned ${res.status}. Try again later.`);
+  return parseAppStoreReviews(await res.text());
+}
 
 function toReview(e: RawReviewEntry): Review | null {
   const ratingStr = e["im:rating"]?.label;
@@ -157,6 +209,8 @@ export async function fetchReviews(
 ): Promise<Review[]> {
   const id = String(appleId);
   const first = await fetchPage(id, country, 1);
+  // RSS can be empty even while the public product page has written reviews.
+  if (first.length === 0) return fetchPageReviews(id, country);
   // Short first page ⇒ no further pages exist.
   if (first.length < PER_PAGE || maxPages <= 1) return dedupe(first);
 
