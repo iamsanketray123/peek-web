@@ -1,5 +1,26 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Use Peek from other code projects
+
+Peek includes a local [ASO MCP server](mcp/README.md) for keyword-position checks,
+competitor research, public listings, reviews and snapshot history. Medo/Dosey and
+Tether have built-in watchlists; any app can be queried by App Store ID or URL.
+
+With Node 22+ installed, clone this **whole repository**, then:
+
+```sh
+npm --prefix mcp ci
+npm --prefix mcp test
+node mcp/client-config.mjs
+```
+
+The last command prints MCP client configuration with paths for your installation.
+You do not need the website's dependencies, database or API credentials. Register
+once in your coding client and use it from any app directory. See the
+[connection instructions](mcp/README.md#connect) for Codex and other clients.
+This is a local MCP integration, not a hosted endpoint; iTunes result positions
+are proxies, not verified on-device App Store ranks.
+
 ## Getting Started
 
 First, run the development server:
