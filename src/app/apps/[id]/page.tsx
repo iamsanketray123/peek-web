@@ -21,6 +21,14 @@ export default async function AppDetailPage({
       >
         <ArrowLeft size={15} /> Back to all apps
       </Link>
+      <div className="mb-5 flex justify-end">
+        <Link
+          href={`/experiments?app=${encodeURIComponent(data.app.id)}`}
+          className="inline-flex min-h-11 items-center rounded-xl border border-line bg-surface px-4 py-2 text-sm text-lime transition-colors hover:border-lime/40 focus-visible:outline-2 focus-visible:outline-lime"
+        >
+          Keyword experiments →
+        </Link>
+      </div>
       <AppDetail key={data.app.id} app={data.app} initialKeywords={data.keywords} />
     </div>
   );

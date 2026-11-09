@@ -11,6 +11,7 @@ import {
   Star,
   Settings,
   Smartphone,
+  FlaskConical,
   LogOut,
   LogIn,
   type LucideIcon,
@@ -42,6 +43,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { label: "Keyword Explorer", href: "/keywords", icon: Search, ready: true },
       { label: "App Tracking", href: "/apps", icon: Smartphone, ready: true },
+      { label: "Experiments", href: "/experiments", icon: FlaskConical, ready: true },
     ],
   },
   {

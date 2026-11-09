@@ -63,9 +63,63 @@ model TrackedApp {
   keywords     AppKeyword[]
   competitors  CompetitorApp[]
   seedStatus   String       @default("pending") // "pending" | "seeding" | "completed" | "error"
+  experiments KeywordExperiment[]
+  experimentEvents ExperimentEvent[]
+  acquisitionDays AcquisitionDay[]
 
   @@unique([userId, appleId, country])
   @@index([userId])
+}
+
+/// An observational metadata experiment, scoped to the parent app's storefront.
+model KeywordExperiment {
+  id            String @id @default(cuid())
+  appId         String
+  app           TrackedApp @relation(fields: [appId], references: [id], onDelete: Cascade)
+  name          String
+  hypothesis    String
+  keywords      String[]
+  before        String
+  after         String
+  baselineStart DateTime @db.Date
+  startDate     DateTime @db.Date
+  endDate       DateTime @db.Date
+  settleDays    Int @default(3)
+  status        String @default("running")
+  conclusion    String @default("")
+  createdAt     DateTime @default(now())
+  @@index([appId, startDate])
+}
+
+/// Explicit user-reported promotion, metadata, or no-promotion windows.
+model ExperimentEvent {
+  id           String @id @default(cuid())
+  appId        String
+  app          TrackedApp @relation(fields: [appId], references: [id], onDelete: Cascade)
+  kind         String
+  title        String
+  startDate    DateTime @db.Date
+  endDate      DateTime @db.Date
+  cooldownDays Int @default(3)
+  url          String @default("")
+  notes        String @default("")
+  createdAt    DateTime @default(now())
+  @@index([appId, startDate])
+}
+
+/// User-entered ASC first-time download counts; null means not reported, NOT zero.
+model AcquisitionDay {
+  id              String @id @default(cuid())
+  appId           String
+  app             TrackedApp @relation(fields: [appId], references: [id], onDelete: Cascade)
+  date            DateTime @db.Date
+  searchDownloads Int?
+  webReferrals    Int?
+  appReferrals    Int?
+  browseDownloads Int?
+  sourceNote      String
+  updatedAt       DateTime @updatedAt
+  @@unique([appId, date])
 }
 
 /// A competitor app associated with a tracked workspace app.
