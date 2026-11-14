@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Star,
   Globe,
+  Menu,
 } from "lucide-react";
 import GlobalMatrixModal from "@/components/GlobalMatrixModal";
 import MetadataOptimizer from "@/components/MetadataOptimizer";
@@ -54,6 +55,11 @@ export default function AppDetail({
   const [adding, startAdd] = useTransition();
   const [refreshing, startRefresh] = useTransition();
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  // Drag and drop keyword repositioning state
+  const [customOrder, setCustomOrder] = useState<string[]>([]);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   // Competitor tracking state
   const [isAddingCompetitor, setIsAddingCompetitor] = useState(false);
@@ -129,7 +135,32 @@ export default function AppDetail({
     return () => clearInterval(interval);
   }, [currentApp.id, currentApp.seedStatus, router]);
 
+  // Load saved keyword reposition order from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`peek_kw_order_${currentApp.id}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setCustomOrder(parsed);
+        }
+      } else {
+        setCustomOrder([]);
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [currentApp.id]);
+
   const sortedKeywords = [...keywords].sort((a, b) => {
+    const idxA = customOrder.indexOf(a.id);
+    const idxB = customOrder.indexOf(b.id);
+    if (idxA !== -1 && idxB !== -1) {
+      return idxA - idxB;
+    }
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+
     const posA = a.position;
     const posB = b.position;
     if (posA !== null && posB !== null) {
@@ -143,6 +174,25 @@ export default function AppDetail({
     const popB = b.popularity ?? 0;
     return popB - popA;
   });
+
+  function handleReorder(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return;
+    const currentIds = sortedKeywords.map((k) => k.id);
+    const fromIndex = currentIds.indexOf(sourceId);
+    const toIndex = currentIds.indexOf(targetId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const nextOrder = [...currentIds];
+    const [moved] = nextOrder.splice(fromIndex, 1);
+    nextOrder.splice(toIndex, 0, moved);
+
+    setCustomOrder(nextOrder);
+    try {
+      localStorage.setItem(`peek_kw_order_${currentApp.id}`, JSON.stringify(nextOrder));
+    } catch (err) {
+      console.error("Failed to save keyword order:", err);
+    }
+  }
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -165,6 +215,13 @@ export default function AppDetail({
     // Optimistic: remove from UI immediately
     const prev = keywords;
     setKeywords((kws) => kws.filter((k) => k.id !== id));
+    setCustomOrder((prevOrder) => {
+      const next = prevOrder.filter((item) => item !== id);
+      try {
+        localStorage.setItem(`peek_kw_order_${currentApp.id}`, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     startAdd(async () => {
       try {
         await removeAppKeyword(id);
@@ -625,9 +682,52 @@ export default function AppDetail({
                     <tbody className="divide-y divide-line/40">
                       {sortedKeywords.map((k) => (
                         <Fragment key={k.id}>
-                          <tr className="group border-b border-line/60 last:border-0 hover:bg-surface/40 transition-colors duration-150">
+                          <tr
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("text/plain", k.id);
+                              e.dataTransfer.effectAllowed = "move";
+                              setDraggedId(k.id);
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              if (dragOverId !== k.id) {
+                                setDragOverId(k.id);
+                              }
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverId === k.id) {
+                                setDragOverId(null);
+                              }
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              const sourceId = e.dataTransfer.getData("text/plain") || draggedId;
+                              if (sourceId) {
+                                handleReorder(sourceId, k.id);
+                              }
+                              setDraggedId(null);
+                              setDragOverId(null);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedId(null);
+                              setDragOverId(null);
+                            }}
+                            className={[
+                              "group border-b border-line/60 last:border-0 hover:bg-surface/40 transition-colors duration-150",
+                              draggedId === k.id ? "opacity-35 bg-surface/60" : "",
+                              dragOverId === k.id && draggedId !== k.id ? "border-t-2 border-t-lime bg-lime/5" : "",
+                            ].join(" ")}
+                          >
                           <td className="px-5 py-4 font-medium text-white">
                             <div className="flex items-center gap-2">
+                              <div
+                                className="cursor-grab active:cursor-grabbing text-faint hover:text-white transition-colors p-1 -ml-1 rounded hover:bg-surface-3/60 shrink-0"
+                                title="Drag to reposition keyword"
+                              >
+                                <Menu size={13} />
+                              </div>
                               <span>{k.term}</span>
                               <button
                                 onClick={() => setActiveGlobalTerm(k.term)}
