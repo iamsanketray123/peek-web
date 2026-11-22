@@ -73,7 +73,7 @@ Example MCP JSON configuration (replace both paths):
 
 Use `app: "medo"` or `"dosey"` for `6807894442`; `"tether"` for `6777777931`.
 All tools also accept numeric IDs or App Store links. Country defaults to US;
-supported storefronts: US, GB, CA, AU, IN, DE, FR, ES, IT, BR, MX, JP, KR.
+supported storefronts: US, GB, CA, AU, DE, FR, JP, KR, CN, BR, IN, IT, ES, PT, NL, SE, CH, NZ, IE, MX.
 
 Example agent requests:
 

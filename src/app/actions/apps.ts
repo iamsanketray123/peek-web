@@ -1274,26 +1274,12 @@ export async function fetchGlobalRatings(
 ): Promise<GlobalRatingsResult> {
   const user = await requireUser(); // Ensure user is authenticated
 
-  const baseCountries = [
-    { code: "us", name: "United States" },
-    { code: "cn", name: "China" },
-    { code: "jp", name: "Japan" },
-    { code: "gb", name: "United Kingdom" },
-    { code: "de", name: "Germany" },
-    { code: "fr", name: "France" },
-    { code: "kr", name: "South Korea" },
-    { code: "br", name: "Brazil" },
-    { code: "in", name: "India" },
-    { code: "ca", name: "Canada" },
-  ];
-
   const currentCode = (currentCountry || "us").toLowerCase();
-  const countryList = [...baseCountries];
+  const countryList = COUNTRIES.map((c) => ({ code: c.code, name: c.name }));
   if (!countryList.some((c) => c.code.toLowerCase() === currentCode)) {
-    const matchedCountry = COUNTRIES.find((c) => c.code.toLowerCase() === currentCode);
     countryList.push({
       code: currentCode,
-      name: matchedCountry?.name || currentCode.toUpperCase(),
+      name: currentCode.toUpperCase(),
     });
   }
 

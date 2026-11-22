@@ -18,6 +18,9 @@ test("real stdio process negotiates MCP, lists tools and validates calls", async
     assert.equal(result.structuredContent.apps.medo.appleId, "6807894442");
     const bad = await client.callTool({ name: "check_ranks", arguments: { app: "medo", country: "xx", keywords: ["pill"] } });
     assert.equal(bad.isError, true);
+    const nz = await client.callTool({ name: "get_history", arguments: { app: "medo", country: "nz", limit: 1 } });
+    assert.notEqual(nz.isError, true);
+    assert.equal(nz.structuredContent.country, "nz");
   } finally { await client.close(); }
 });
 

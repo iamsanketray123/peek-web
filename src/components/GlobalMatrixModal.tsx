@@ -4,16 +4,11 @@ import { useState, useEffect } from "react";
 import { Loader2, X, Globe, TrendingUp } from "lucide-react";
 import { getGlobalRankMatrix, type GlobalRankPoint } from "@/app/actions/apps";
 import { MetricBar } from "@/components/MetricBar";
+import { COUNTRIES } from "@/lib/format";
 
-const COUNTRY_MAP: Record<string, { name: string; flag: string }> = {
-  us: { name: "United States", flag: "🇺🇸" },
-  gb: { name: "United Kingdom", flag: "🇬🇧" },
-  de: { name: "Germany", flag: "🇩🇪" },
-  fr: { name: "France", flag: "🇫🇷" },
-  jp: { name: "Japan", flag: "🇯🇵" },
-  ca: { name: "Canada", flag: "🇨🇦" },
-  au: { name: "Australia", flag: "🇦🇺" },
-};
+const COUNTRY_MAP: Record<string, { name: string; flag: string }> = Object.fromEntries(
+  COUNTRIES.map((c) => [c.code, { name: c.name, flag: c.flag }])
+);
 
 export default function GlobalMatrixModal({
   appId,
