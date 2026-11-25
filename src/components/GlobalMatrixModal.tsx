@@ -41,14 +41,19 @@ export default function GlobalMatrixModal({
   }, [appId, term]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-surface/90 p-6 shadow-2xl backdrop-blur-xl animate-scale-up">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface/90 p-6 shadow-2xl backdrop-blur-xl animate-scale-up">
         {/* Glowing background highlights */}
         <div className="absolute -top-32 -left-32 h-64 w-64 rounded-full bg-lime/5 blur-[80px] pointer-events-none" />
         <div className="absolute -bottom-32 -right-32 h-64 w-64 rounded-full bg-blue-500/5 blur-[80px] pointer-events-none" />
 
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between border-b border-line pb-4">
+        <div className="mb-5 flex shrink-0 items-center justify-between border-b border-line pb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-lime/10 border border-lime/20 text-lime shadow-inner">
               <Globe size={18} />
@@ -83,10 +88,10 @@ export default function GlobalMatrixModal({
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-line bg-surface/40 shadow-inner">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-line bg-surface/40 shadow-inner">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line bg-surface/75 text-left text-xs uppercase tracking-wide text-faint font-semibold">
+              <thead className="sticky top-0 z-10 bg-surface/95 backdrop-blur-md">
+                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-faint font-semibold">
                   <th className="px-4 py-3 font-semibold">Storefront</th>
                   <th className="w-28 px-4 py-3 font-semibold">Organic Rank</th>
                   <th className="w-36 px-4 py-3 font-semibold">Search Volume</th>
@@ -142,7 +147,7 @@ export default function GlobalMatrixModal({
           </div>
         )}
 
-        <div className="mt-5 border-t border-line/60 pt-4 text-center">
+        <div className="mt-5 shrink-0 border-t border-line/60 pt-4 text-center">
           <p className="text-[10px] text-faint leading-relaxed">
             International ratings and algorithmic indexes vary dynamically based on localized title matches, downloads, and storefront conversion metrics.
           </p>
